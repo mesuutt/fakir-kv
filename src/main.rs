@@ -1,11 +1,14 @@
-use std::fs::File;
-use crate::store::Bitcask;
+use crate::storage::FsStorage;
+use crate::storage::Storage;
 
-mod store;
+mod storage;
 mod error;
 
 fn main() {
-    let result = Bitcask::start("/tmp/my_bitcask");
+    let mut cask = FsStorage::load("/tmp/my_bitcask").unwrap();
+    if let Err(e) = cask.put("asdasd".as_bytes(), "asdasdd".as_bytes()) {
+        panic!("{}", e)
+    }
 
-    println!("Hello, world!: {:?}", result);
+    println!("Hello, world!: {:?}", cask);
 }
