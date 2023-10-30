@@ -14,7 +14,7 @@ const KEY_OFFSET: usize = 8;
 const KEY_SIZE: usize = size_of::<u32>();
 const VAL_SIZE: usize = size_of::<u32>();
 
-type KeyDir = HashMap<Vec<u8>, Header>;
+type KeyDir = HashMap<Vec<u8>, Header>; // TODO: we can use BtreeMap
 
 #[derive(Debug)]
 struct Header {
@@ -35,5 +35,9 @@ struct Data {
 
 pub trait Storage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()>;
-    fn get(&self, key: &[u8]) -> Result<&[u8]>;
+    fn get(&self, key: &[u8]) -> Result<Vec<u8>> where Self: Reader;
+}
+
+pub trait Reader {
+    fn read_val(&self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
 }
