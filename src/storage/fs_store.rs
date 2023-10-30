@@ -61,7 +61,7 @@ impl Storage for FsStorage {
         self.key_dir.insert(key.to_vec(), Header {
             file_id: self.active_file_id,
             val_size: val.len() as u32,
-            val_offset: self.position + 4 + 4 + key.len() as u32,
+            val_offset: self.position + KEY_SIZE + VAL_SIZE + key.len() as u32,
             ts_tamp,
         });
 
