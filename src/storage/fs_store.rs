@@ -32,7 +32,6 @@ impl FsStorage {
         }
 
         let file = OpenOptions::new()
-            .read(true)
             .append(true)
             .create(true)
             .open(path)?;
@@ -92,7 +91,7 @@ impl Reader for FsStorage {
 
         file.seek(SeekFrom::Start(offset as u64))?;
 
-        let mut buf = Vec::with_capacity(size as usize);
+        let mut buf = vec![0u8; size as usize];
         file.read_exact(&mut buf)?;
 
         Ok(buf)
