@@ -119,11 +119,16 @@ mod test {
 
     #[test]
     fn it_should_put_to_file() {
+        // given
         let dir = TempDir::new("bitcask-").unwrap();
         let mut cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
         let key = b"foo";
         let val = b"bar";
-        cask.put(key, val);
+
+        // when
+        cask.put(key, val).unwrap();
+
+        // then
         let mut payload = vec![0; KEY_SIZE + VAL_SIZE + key.len() + val.len()]; // ksz + vsz + k + v
 
         cask.active_file.seek(SeekFrom::Start(0)).unwrap();
@@ -141,5 +146,25 @@ mod test {
         assert_eq!(header.val_size, val.len() as u32);
         assert_eq!(header.val_offset, (KEY_SIZE + VAL_SIZE + key.len()).try_into().unwrap());
         assert_eq!(cask.position, (KEY_SIZE + VAL_SIZE + key.len() + val.len()).try_into().unwrap());
+    }
+
+    #[test]
+    fn it_should_get() {
+        // given
+        let dir = TempDir::new("bitcask-").unwrap();
+        let mut cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
+
+        let pairs: Vec<(&[u8], &[u8])> = vec![
+            (b"key1", b"val112"),
+            (b"key2", b"val213213"),
+            (b"key3", b"val3 123123"),
+        ];
+
+        for (key, val) in pairs {
+            cask.put(key, val).unwrap();
+
+            let actual = cask.get(key).unwrap();
+            assert_eq!(val, actual.as_slice());
+        }
     }
 }
