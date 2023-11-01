@@ -33,6 +33,7 @@ impl FsStorage {
 
         let file = OpenOptions::new()
             .append(true)
+            // .read(true)
             .create(true)
             .open(path)?;
 
@@ -93,6 +94,7 @@ impl Reader for FsStorage {
 
         let mut buf = vec![0u8; size as usize];
         file.read_exact(&mut buf)?;
+        // TODO: get Data struct for check expirity, CRC.
 
         Ok(buf)
     }
@@ -100,7 +102,9 @@ impl Reader for FsStorage {
 
 #[cfg(test)]
 mod test {
+    use std::fs::File;
     use std::io::{Read, Seek, SeekFrom};
+    use std::path::Path;
 
     use tempdir::TempDir;
 
@@ -121,31 +125,32 @@ mod test {
     fn it_should_put_to_file() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
+        let mut write_cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
         let key = b"foo";
         let val = b"bar";
 
         // when
-        cask.put(key, val).unwrap();
+        write_cask.put(key, val).unwrap();
 
         // then
         let mut payload = vec![0; KEY_SIZE + VAL_SIZE + key.len() + val.len()]; // ksz + vsz + k + v
 
-        cask.active_file.seek(SeekFrom::Start(0)).unwrap();
-        cask.active_file.read_exact(&mut payload).unwrap();
+        let mut cask_file = File::open(Path::join(dir.path(), format!("{}.bitcask.data", write_cask.active_file_id))).unwrap();
+        cask_file.seek(SeekFrom::Start(0)).unwrap();
+        cask_file.read_exact(&mut payload).unwrap();
 
         assert_eq!(u32::from_be_bytes(payload[KEY_SIZE_OFFSET..VAL_SIZE_OFFSET].try_into().unwrap()), key.len() as u32);
         assert_eq!(u32::from_be_bytes(payload[VAL_SIZE_OFFSET..KEY_OFFSET].try_into().unwrap()), val.len() as u32);
         let val_offset = KEY_OFFSET + key.len();
         assert_eq!(payload[KEY_OFFSET..KEY_OFFSET + key.len()], *key.as_slice());
         assert_eq!(payload[val_offset..val_offset + val.len()], *val.as_slice());
-        dbg!(cask.key_dir.get(&key.to_vec()).unwrap());
+        dbg!(write_cask.key_dir.get(&key.to_vec()).unwrap());
 
-        let header = cask.key_dir.get(key.as_slice()).unwrap();
-        assert_eq!(header.file_id, cask.active_file_id);
+        let header = write_cask.key_dir.get(key.as_slice()).unwrap();
+        assert_eq!(header.file_id, write_cask.active_file_id);
         assert_eq!(header.val_size, val.len() as u32);
         assert_eq!(header.val_offset, (KEY_SIZE + VAL_SIZE + key.len()).try_into().unwrap());
-        assert_eq!(cask.position, (KEY_SIZE + VAL_SIZE + key.len() + val.len()).try_into().unwrap());
+        assert_eq!(write_cask.position, (KEY_SIZE + VAL_SIZE + key.len() + val.len()).try_into().unwrap());
     }
 
     #[test]
