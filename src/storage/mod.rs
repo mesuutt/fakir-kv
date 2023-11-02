@@ -14,7 +14,9 @@ const KEY_OFFSET: usize = 8;
 const KEY_SIZE: usize = size_of::<u32>();
 const VAL_SIZE: usize = size_of::<u32>();
 
-type KeyDir = HashMap<Vec<u8>, Header>; // TODO: we can use BtreeMap
+// TODO: we can use BtreeMap, it can be slower then HashMap at some cases:
+// https://www.dotnetperls.com/btreemap-rust
+type KeyDir = HashMap<Vec<u8>, Header>;
 
 #[derive(Debug)]
 struct Header {
@@ -35,9 +37,9 @@ struct Data {
 
 pub trait Storage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()>;
-    fn get(&self, key: &[u8]) -> Result<Vec<u8>> where Self: Reader;
+    fn get(&mut self, key: &[u8]) -> Result<Vec<u8>> where Self: Reader;
 }
 
 pub trait Reader {
-    fn read_val(&self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
+    fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
 }

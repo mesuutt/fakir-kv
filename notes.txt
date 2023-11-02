@@ -1,0 +1,8 @@
+Single Writer logic:
+- bitcask.write.lock, bitcask.merge.lock gibi iki dosya olusturuyor bitcask dir'e.
+- eger lock dosyasi varsa dosyayi read-only mode'da aciyor ve icerisinden pid'i aliyor.
+- o pid'i `kill -0 PID` ile hala yasiyor mu diye bakiyor. Eger yasamiyorsa lock dosyasini silip tekrar deniyor.
+
+lock dosyasina yazarken O_SYNC kullaniyor. Bu write yaptiginda gercekten dosya sistemine yaziyormus, buffer'da bekleme vs olmuyormus.
+bitcask_nifs_lock_writedata
+

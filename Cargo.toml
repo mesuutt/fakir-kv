@@ -11,4 +11,10 @@ thiserror = "1.0.50"
 bytes = { version = "1.5.0", features = [] }
 
 [dev-dependencies]
+criterion = "0.5.1"
+rand = "0.8.5"
 tempdir = "0.3.7"
+
+[[bench]]
+name = "bench_main"
+harness = false
