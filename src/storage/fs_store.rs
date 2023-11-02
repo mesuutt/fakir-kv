@@ -1,16 +1,15 @@
-use std::fmt::format;
 use std::fs;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::fd::{AsFd, BorrowedFd};
+use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
-use bytes::{BufMut, BytesMut};
+use bytes::BufMut;
 
 use crate::error::BitcaskError;
-use crate::storage::{Data, Header, KEY_SIZE, KeyDir, Reader, Storage, VAL_SIZE};
+use crate::storage::{Header, KEY_SIZE, KeyDir, Reader, Storage, VAL_SIZE};
 
 #[derive(Debug)]
 pub struct FsStorage {
