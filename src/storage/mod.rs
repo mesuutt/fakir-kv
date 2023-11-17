@@ -7,12 +7,15 @@ pub use fs_store::FsStorage;
 
 mod fs_store;
 
-const KEY_SIZE_OFFSET: usize = 0;
-const VAL_SIZE_OFFSET: usize = 4;
-const KEY_OFFSET: usize = 8;
 
 const KEY_SIZE: usize = size_of::<u32>();
 const VAL_SIZE: usize = size_of::<u32>();
+const CRC_SIZE: usize = size_of::<u32>();
+const TS_SIZE: usize = size_of::<u32>();
+
+const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
+const VAL_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE;
+const KEY_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE;
 
 // TODO: we can use BtreeMap, it can be slower then HashMap at some cases:
 // https://www.dotnetperls.com/btreemap-rust
@@ -27,8 +30,8 @@ struct Header {
 }
 
 struct Data {
-    // crc: u8
-    // ts_tamp: u32,
+    crc: u32,
+    ts_tamp: u64,
     key_size: u32,
     val_size: u32,
     key: Vec<u8>,

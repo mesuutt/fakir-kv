@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, stderr, Write};
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use bytes::BufMut;
 
 use crate::error::BitcaskError;
-use crate::storage::{Header, KEY_SIZE, KeyDir, Reader, Storage, VAL_SIZE};
+use crate::storage::{CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE, KEY_SIZE_OFFSET, KeyDir, Reader, Storage, TS_SIZE, VAL_SIZE, VAL_SIZE_OFFSET};
 
 #[derive(Debug)]
 pub struct FsStorage {
@@ -63,20 +63,35 @@ impl FsStorage {
 impl Storage for FsStorage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
         self.active_file.seek(SeekFrom::Start(self.position as u64))?;
-        let mut payload = Vec::with_capacity(KEY_SIZE + VAL_SIZE + key.len() + val.len()); // key_size + val_size + key+val
+        let mut payload = Vec::with_capacity(KEY_OFFSET + key.len() + val.len());
 
+        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+        payload.put_u32(0); // empty space for crc
+        payload.put_u32(ts_tamp as u32);
         payload.put_u32(key.len() as u32);
         payload.put_u32(val.len() as u32);
         payload.put(key);
         payload.put(val);
 
-        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let checksum = crc32fast::hash(&payload[CRC_SIZE..]);
+        payload.splice(0..CRC_SIZE, checksum.to_be_bytes());
+
+        /*
+        dbg!(CRC_SIZE);
+        dbg!(TS_SIZE);
+        dbg!(KEY_SIZE);
+        dbg!(KEY_SIZE_OFFSET, KEY_OFFSET);
+        dbg!(VAL_SIZE, VAL_SIZE_OFFSET);
+        dbg!(CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE);
+        */
+
         self.active_file.write_all(&payload).context("file write failed")?;
         // self.active_file.sync_data()?;
         self.key_dir.insert(key.to_vec(), Header {
             file_id: self.active_file_id,
             val_size: val.len() as u32,
-            val_offset: self.position + (KEY_SIZE + VAL_SIZE + key.len()) as u32,
+            val_offset: self.position + (KEY_OFFSET + key.len()) as u32,
             ts_tamp,
         });
 
@@ -91,6 +106,14 @@ impl Storage for FsStorage {
             Some(h) => {
                 Ok(self.read_val(h.file_id, h.val_offset, h.val_size)?)
             }
+        }
+    }
+}
+
+impl Drop for FsStorage {
+    fn drop(&mut self) {
+        if let Err(e) = self.active_file.sync_all() {
+            write!(stderr(), "error while closing active file: {:?}", e).expect("error writing to stderr");
         }
     }
 }
