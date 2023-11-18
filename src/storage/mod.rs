@@ -8,6 +8,8 @@ pub use fs_store::FsStorage;
 mod fs_store;
 
 
+// [crc|ts_tamp|ksz|vsz|key|val]
+
 const CRC_SIZE: usize = size_of::<u32>();
 const TS_SIZE: usize = size_of::<u32>();
 const KEY_SIZE: usize = size_of::<u32>();
@@ -16,8 +18,8 @@ const VAL_SIZE: usize = size_of::<u32>();
 const CRC_OFFSET: usize = 0;
 const TS_OFFSET: usize = CRC_SIZE;
 const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
-const VAL_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE;
-const KEY_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE;
+const VAL_SIZE_OFFSET: usize = KEY_SIZE_OFFSET + KEY_SIZE;
+const KEY_OFFSET: usize = VAL_SIZE_OFFSET + VAL_SIZE;
 
 // TODO: we can use BtreeMap, it can be slower then HashMap at some cases:
 // https://www.dotnetperls.com/btreemap-rust
