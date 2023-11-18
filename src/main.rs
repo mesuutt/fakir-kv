@@ -1,3 +1,5 @@
+extern crate core;
+
 use crate::storage::FsStorage;
 use crate::storage::Storage;
 
@@ -6,9 +8,13 @@ mod error;
 
 fn main() {
     let mut cask = FsStorage::load("/tmp/my_bitcask").unwrap();
-    if let Err(e) = cask.put("a1".as_bytes(), "a1 a2".as_bytes()) {
+    if let Err(e) = cask.put(b"a1", b"a1 a2") {
         panic!("{}", e)
     }
-
-    println!("Hello, world!: {:?}", std::str::from_utf8(cask.get("a1".as_bytes()).unwrap().as_slice()).unwrap());
+    let key = "a1";
+    if let Some(x) = cask.get(key.as_bytes()).unwrap() {
+        println!("key found: `{:?}`", std::str::from_utf8(x.as_slice()));
+    } else {
+        println!("given key not found: `{}`", key);
+    }
 }

@@ -8,8 +8,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Context, Result};
 use bytes::BufMut;
 
-use crate::error::BitcaskError;
-use crate::storage::{CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE, KEY_SIZE_OFFSET, KeyDir, Reader, Storage, TS_SIZE, VAL_SIZE, VAL_SIZE_OFFSET};
+use crate::storage::{CRC_SIZE, Header, KEY_OFFSET, KeyDir, Reader, Storage};
+
+#[derive(Debug)]
+pub struct Opts {
+    expiry_secs: u32,
+}
 
 #[derive(Debug)]
 pub struct FsStorage {
@@ -20,6 +24,7 @@ pub struct FsStorage {
     key_dir: KeyDir,
     dir: PathBuf,
     read_file: fs::File,
+    ops: Opts,
 }
 
 impl FsStorage {
@@ -50,6 +55,7 @@ impl FsStorage {
             position: 0,
             key_dir: Default::default(),
             dir: dir.parse()?,
+            ops: Opts { expiry_secs: 0 },
         };
 
         Ok(bitcask)
@@ -65,10 +71,10 @@ impl Storage for FsStorage {
         self.active_file.seek(SeekFrom::Start(self.position as u64))?;
         let mut payload = Vec::with_capacity(KEY_OFFSET + key.len() + val.len());
 
-        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
 
         payload.put_u32(0); // empty space for crc
-        payload.put_u32(ts_tamp as u32);
+        payload.put_u32(ts_tamp);
         payload.put_u32(key.len() as u32);
         payload.put_u32(val.len() as u32);
         payload.put(key);
@@ -100,13 +106,26 @@ impl Storage for FsStorage {
         Ok(())
     }
 
-    fn get(&mut self, key: &[u8]) -> Result<Vec<u8>> where Self: Reader {
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: Reader {
         match self.key_dir.get(key) {
-            None => { Err(BitcaskError::NotFound.into()) }
+            None => { Ok(None) }
             Some(h) => {
-                Ok(self.read_val(h.file_id, h.val_offset, h.val_size)?)
+                if h.ts_tamp < expiry_time(self.ops.expiry_secs) {
+                    self.key_dir.remove(key);
+                    return Ok(None);
+                }
+
+                Ok(Some(self.read_val(h.file_id, h.val_offset, h.val_size)?))
             }
         }
+    }
+}
+
+fn expiry_time(expire_secs: u32) -> u32 {
+    if expire_secs > 0 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32 - expire_secs
+    } else {
+        0
     }
 }
 
@@ -120,15 +139,10 @@ impl Drop for FsStorage {
 
 impl Reader for FsStorage {
     fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
-        /*let mut file = OpenOptions::new()
-            .read(true)
-            .open(self.dir.join(FsStorage::make_filename(file_id)))?; //1698702893
-*/
         self.read_file.seek(SeekFrom::Start(offset as u64))?;
 
         let mut buf = vec![0u8; size as usize];
         self.read_file.read_exact(&mut buf)?;
-        // TODO: get Data struct for check expirity, CRC.
 
         Ok(buf)
     }
@@ -142,7 +156,7 @@ mod test {
 
     use tempdir::TempDir;
 
-    use crate::storage::{KEY_OFFSET, KEY_SIZE, KEY_SIZE_OFFSET, Storage, VAL_SIZE, VAL_SIZE_OFFSET};
+    use crate::storage::{CRC_OFFSET, CRC_SIZE, KEY_OFFSET, KEY_SIZE_OFFSET, Storage, VAL_SIZE_OFFSET};
 
     use super::FsStorage;
 
@@ -167,14 +181,15 @@ mod test {
         write_cask.put(key, val).unwrap();
 
         // then
-        let mut payload = vec![0; KEY_SIZE + VAL_SIZE + key.len() + val.len()]; // ksz + vsz + k + v
+        let mut payload = vec![0; KEY_OFFSET + key.len() + val.len()];
 
         let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(write_cask.active_file_id))).unwrap();
         cask_file.seek(SeekFrom::Start(0)).unwrap();
         cask_file.read_exact(&mut payload).unwrap();
 
-        // write_cask.active_file.seek(SeekFrom::Start(0)).unwrap();
-        // write_cask.active_file.read_exact(&mut payload).unwrap();
+        let payload_without_crc = payload[CRC_OFFSET + CRC_SIZE..].to_vec();
+        let checksum = crc32fast::hash(&payload_without_crc);
+        assert_eq!(u32::from_be_bytes(payload[CRC_OFFSET..CRC_OFFSET + CRC_SIZE].try_into().unwrap()), checksum);
 
         assert_eq!(u32::from_be_bytes(payload[KEY_SIZE_OFFSET..VAL_SIZE_OFFSET].try_into().unwrap()), key.len() as u32);
         assert_eq!(u32::from_be_bytes(payload[VAL_SIZE_OFFSET..KEY_OFFSET].try_into().unwrap()), val.len() as u32);
@@ -186,8 +201,8 @@ mod test {
         let header = write_cask.key_dir.get(key.as_slice()).unwrap();
         assert_eq!(header.file_id, write_cask.active_file_id);
         assert_eq!(header.val_size, val.len() as u32);
-        assert_eq!(header.val_offset, (KEY_SIZE + VAL_SIZE + key.len()).try_into().unwrap());
-        assert_eq!(write_cask.position, (KEY_SIZE + VAL_SIZE + key.len() + val.len()).try_into().unwrap());
+        assert_eq!(header.val_offset, (KEY_OFFSET + key.len()).try_into().unwrap());
+        assert_eq!(write_cask.position, (KEY_OFFSET + key.len() + val.len()).try_into().unwrap());
     }
 
     #[test]
@@ -205,7 +220,7 @@ mod test {
         for (key, val) in pairs {
             cask.put(key, val).unwrap();
 
-            let actual = cask.get(key).unwrap();
+            let actual = cask.get(key).unwrap().unwrap();
             assert_eq!(val, actual.as_slice());
         }
     }

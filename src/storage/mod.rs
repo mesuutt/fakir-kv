@@ -8,11 +8,13 @@ pub use fs_store::FsStorage;
 mod fs_store;
 
 
-const KEY_SIZE: usize = size_of::<u32>();
-const VAL_SIZE: usize = size_of::<u32>();
 const CRC_SIZE: usize = size_of::<u32>();
 const TS_SIZE: usize = size_of::<u32>();
+const KEY_SIZE: usize = size_of::<u32>();
+const VAL_SIZE: usize = size_of::<u32>();
 
+const CRC_OFFSET: usize = 0;
+const TS_OFFSET: usize = CRC_SIZE;
 const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
 const VAL_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE;
 const KEY_OFFSET: usize = CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE;
@@ -26,7 +28,7 @@ struct Header {
     file_id: u64,
     val_size: u32,
     val_offset: u32,
-    ts_tamp: u64,
+    ts_tamp: u32,
 }
 
 struct Data {
@@ -40,9 +42,22 @@ struct Data {
 
 pub trait Storage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()>;
-    fn get(&mut self, key: &[u8]) -> Result<Vec<u8>> where Self: Reader;
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: Reader;
 }
 
 pub trait Reader {
     fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
+}
+
+impl Data {
+    pub fn from(p: &[u8]) -> Self{
+        Data{
+            crc: 0,
+            ts_tamp: 0,
+            key_size: 0,
+            val_size: 0,
+            key: vec![],
+            val: vec![],
+        }
+    }
 }
