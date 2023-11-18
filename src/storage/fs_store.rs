@@ -69,19 +69,6 @@ impl FsStorage {
 impl Storage for FsStorage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
         self.active_file.seek(SeekFrom::Start(self.position as u64))?;
-        let mut payload = Vec::with_capacity(KEY_OFFSET + key.len() + val.len());
-
-        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
-
-        payload.put_u32(0); // empty space for crc
-        payload.put_u32(ts_tamp);
-        payload.put_u32(key.len() as u32);
-        payload.put_u32(val.len() as u32);
-        payload.put(key);
-        payload.put(val);
-
-        let checksum = crc32fast::hash(&payload[CRC_SIZE..]);
-        payload.splice(0..CRC_SIZE, checksum.to_be_bytes());
 
         /*
         dbg!(CRC_SIZE);
@@ -92,7 +79,11 @@ impl Storage for FsStorage {
         dbg!(CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE);
         */
 
-        self.active_file.write_all(&payload).context("file write failed")?;
+        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+
+        let entry_bytes = create_entry(key, val, ts_tamp);
+
+        self.active_file.write_all(&entry_bytes).context("file write failed")?;
         // self.active_file.sync_data()?;
         self.key_dir.insert(key.to_vec(), Header {
             file_id: self.active_file_id,
@@ -101,7 +92,7 @@ impl Storage for FsStorage {
             ts_tamp,
         });
 
-        self.position += payload.len() as u32;
+        self.position += entry_bytes.len() as u32;
 
         Ok(())
     }
@@ -119,6 +110,22 @@ impl Storage for FsStorage {
             }
         }
     }
+}
+
+fn create_entry(key: &[u8], val: &[u8], ts_tamp: u32) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(KEY_OFFSET + key.len() + val.len());
+
+    payload.put_u32(0); // empty space for crc
+    payload.put_u32(ts_tamp);
+    payload.put_u32(key.len() as u32);
+    payload.put_u32(val.len() as u32);
+    payload.put(key);
+    payload.put(val);
+
+    let checksum = crc32fast::hash(&payload[CRC_SIZE..]);
+    payload.splice(0..CRC_SIZE, checksum.to_be_bytes());
+
+    payload
 }
 
 fn expiry_time(expire_secs: u32) -> u32 {
