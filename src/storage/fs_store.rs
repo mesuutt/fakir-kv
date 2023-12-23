@@ -124,7 +124,7 @@ fn create_entry(key: &[u8], val: &[u8], ts_tamp: u32) -> Vec<u8> {
     payload.put(key);
     payload.put(val);
 
-    let checksum = crc32fast::hash(&payload[CRC_SIZE..]);
+    let checksum = crc32fast::hash(&payload[CRC_OFFSET + CRC_SIZE..]);
     payload.splice(0..CRC_SIZE, checksum.to_be_bytes());
 
     payload
@@ -202,10 +202,11 @@ mod test {
 
         assert_eq!(u32::from_be_bytes(payload[KEY_SIZE_OFFSET..VAL_SIZE_OFFSET].try_into().unwrap()), key.len() as u32);
         assert_eq!(u32::from_be_bytes(payload[VAL_SIZE_OFFSET..KEY_OFFSET].try_into().unwrap()), val.len() as u32);
-        let val_offset = KEY_OFFSET + key.len();
+
         assert_eq!(payload[KEY_OFFSET..KEY_OFFSET + key.len()], *key.as_slice());
+
+        let val_offset = KEY_OFFSET + key.len();
         assert_eq!(payload[val_offset..val_offset + val.len()], *val.as_slice());
-        dbg!(write_cask.key_dir.get(&key.to_vec()).unwrap());
 
         let header = write_cask.key_dir.get(key.as_slice()).unwrap();
         assert_eq!(header.file_id, write_cask.active_file_id);

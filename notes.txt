@@ -6,3 +6,4 @@ Single Writer logic:
 lock dosyasina yazarken O_SYNC kullaniyor. Bu write yaptiginda gercekten dosya sistemine yaziyormus, buffer'da bekleme vs olmuyormus.
 bitcask_nifs_lock_writedata
 
+
