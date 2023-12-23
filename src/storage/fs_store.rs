@@ -7,8 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use bytes::BufMut;
+use fs2::FileExt;
 
-use crate::storage::{CRC_SIZE, Header, KEY_OFFSET, KeyDir, Reader, Storage};
+use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KeyDir, lock, Reader, Storage};
 
 #[derive(Debug)]
 pub struct Opts {
@@ -20,7 +21,6 @@ pub struct FsStorage {
     active_file: fs::File,
     active_file_id: u64,
     position: u32,
-    // current position
     key_dir: KeyDir,
     dir: PathBuf,
     read_file: fs::File,
@@ -29,7 +29,8 @@ pub struct FsStorage {
 
 impl FsStorage {
     pub fn load(dir: &str) -> Result<Self> {
-        fs::create_dir_all(dir).context("key dir creation failed")?;
+        fs::create_dir_all(dir).context("data directory creation failed")?;
+        lock::try_lock_db(dir)?;
 
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let path = Path::new(dir).join(FsStorage::make_filename(active_file_id));
@@ -37,12 +38,12 @@ impl FsStorage {
             return Err(anyhow!("not implemented yet"));
         }
 
-        // println!("CASK FILE: {:?}", &path);
         let active_file = OpenOptions::new()
             .append(true)
             // .read(true)
             .create(true)
             .open(&path)?;
+
 
         let read_file = OpenOptions::new()
             .read(true)
@@ -60,6 +61,7 @@ impl FsStorage {
 
         Ok(bitcask)
     }
+
 
     fn make_filename(file_id: u64) -> String {
         format!("{}.bitcask.data", file_id)

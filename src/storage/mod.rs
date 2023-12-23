@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 pub use fs_store::FsStorage;
 
 mod fs_store;
+mod lock;
 
 
 // [crc|ts_tamp|ksz|vsz|key|val]
