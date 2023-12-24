@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::mem::size_of;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 
 pub use fs_store::FsStorage;
 
 mod fs_store;
 mod file_lock;
-
 
 // [crc|ts_tamp|ksz|vsz|key|val]
 
@@ -43,21 +42,6 @@ struct Data {
     val: Vec<u8>,
 }
 
-pub trait Storage {
-    fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()>;
-    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: Reader;
-    fn sync(&mut self) -> Result<()>;
-}
-
-pub trait Reader {
-    fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
-}
-
-
-pub trait Writer {
-    fn write(&mut self, buf: &[u8]) -> Result<()>;
-}
-
 impl Data {
     pub fn from(p: &[u8]) -> Self {
         Data {
@@ -70,3 +54,12 @@ impl Data {
         }
     }
 }
+
+/*pub trait Reader {
+    fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>>;
+}
+
+pub trait Writer {
+    fn write(&mut self, buf: &[u8]) -> anyhow::Result<()>;
+}
+*/

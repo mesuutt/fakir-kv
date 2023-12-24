@@ -1,10 +1,8 @@
-extern crate core;
-
+use crate::cask::{Reader, FsBackend, Writer};
 use crate::storage::FsStorage;
-use crate::storage::Storage;
 
+mod cask;
 mod storage;
-mod error;
 
 fn main() {
     let mut cask = match FsStorage::open("/tmp/my_bitcask", Default::default()) {

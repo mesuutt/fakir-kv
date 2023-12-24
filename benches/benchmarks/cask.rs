@@ -1,10 +1,11 @@
 use criterion::Criterion;
-use rand::seq::SliceRandom;
 use rand;
+use rand::seq::SliceRandom;
 use tempdir::TempDir;
 
-use bitcask::FsStorage;
-use bitcask::Storage;
+use bitcask::storage::FsStorage;
+use bitcask::cask::FsBackend;
+use bitcask::cask::{Reader, Writer};
 
 pub fn bench(c: &mut Criterion) {
     let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = (1..500).into_iter().map(|x| (format!("k_{}", x).as_bytes().to_vec(), format!("val_{}", x).as_bytes().to_vec())).collect();
