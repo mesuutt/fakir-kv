@@ -30,7 +30,7 @@ pub struct FsStorage {
 }
 
 impl FsStorage {
-    pub fn load(dir: &str) -> Result<Self> {
+    pub fn open(dir: &str) -> Result<Self> {
         fs::create_dir_all(dir).context("data directory creation failed")?;
         lock::try_lock_db(dir)?;
 
@@ -121,7 +121,7 @@ impl Storage for FsStorage {
 
 impl Writer for FsStorage {
     fn write(&mut self, buf: &[u8]) -> Result<()> {
-        self.active_file.seek(SeekFrom::Start(self.position as u64))?;
+        // self.active_file.seek(SeekFrom::Start(self.position as u64))?;
         self.active_file.write_all(&buf).context("file write failed")?;
         self.position += buf.len() as u32;
 
@@ -192,7 +192,7 @@ mod test {
     #[test]
     fn it_should_load_cask_from_file() {
         let dir = TempDir::new("bitcask-").unwrap();
-        let cask_result = FsStorage::load(dir.path().to_str().unwrap());
+        let cask_result = FsStorage::open(dir.path().to_str().unwrap());
 
         assert!(cask_result.is_ok());
         assert_eq!(0, cask_result.unwrap().position);
@@ -202,7 +202,7 @@ mod test {
     fn it_should_put_to_file() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut write_cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
+        let mut write_cask = FsStorage::open(dir.path().to_str().unwrap()).unwrap();
         let key = b"foo";
         let val = b"bar";
 
@@ -239,7 +239,7 @@ mod test {
     fn it_should_get() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut cask = FsStorage::load(dir.path().to_str().unwrap()).unwrap();
+        let mut cask = FsStorage::open(dir.path().to_str().unwrap()).unwrap();
 
         let pairs: Vec<(&[u8], &[u8])> = vec![
             (b"key1", b"val1"),

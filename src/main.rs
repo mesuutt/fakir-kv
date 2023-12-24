@@ -7,7 +7,7 @@ mod storage;
 mod error;
 
 fn main() {
-    let mut cask = match FsStorage::load("/tmp/my_bitcask") {
+    let mut cask = match FsStorage::open("/tmp/my_bitcask") {
         Ok(c) => { c }
         Err(e) => {
             println!("Bitcask load error: {:?}", e);
