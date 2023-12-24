@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use fs2::FileExt;
+use log::debug;
 
 pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
     let path = Path::new(dir).join("pid.lock");
@@ -20,6 +21,8 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
             write_pid(&mut f)?
         }
         Err(_) => {
+            debug!("lock file exist.");
+
             let mut file = OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -31,7 +34,7 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
             file.read_to_string(&mut pid)?;
 
             if pid == "" {
-                return Err(anyhow!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not runnung.", path.clone().display())));
+                return Err(anyhow!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display())));
             }
 
             unsafe {
@@ -40,8 +43,6 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
                 }
             }
 
-            println!("sleeping in lock");
-            sleep(Duration::from_secs(100*100));
             write_pid(&mut file)?
         }
     }

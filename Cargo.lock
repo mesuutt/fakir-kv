@@ -44,6 +44,7 @@ dependencies = [
  "crc32fast",
  "criterion",
  "fs2",
+ "log",
  "nix",
  "rand 0.8.5",
  "tempdir",
