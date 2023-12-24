@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use anyhow::{anyhow, Context};
+use anyhow::{bail, Context};
 use fs2::FileExt;
 use log::debug;
 
@@ -32,12 +32,12 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
             file.read_to_string(&mut pid)?;
 
             if pid == "" {
-                return Err(anyhow!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display())));
+                return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display()));
             }
 
             unsafe {
                 if nix::libc::kill(pid.parse()?, 0) == 0 {
-                    return Err(anyhow!("process already running"));
+                    return bail!("process already running");
                 }
             }
 

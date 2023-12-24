@@ -30,7 +30,7 @@ pub struct FsStorage {
 }
 
 impl FsStorage {
-    pub fn open(dir: &str) -> Result<Self> {
+    pub fn open(dir: &str, ops: Opts) -> Result<Self> {
         fs::create_dir_all(dir).context("data directory creation failed")?;
         file_lock::try_lock_db(dir)?;
 
@@ -57,7 +57,7 @@ impl FsStorage {
             position: 0,
             key_dir: Default::default(),
             dir: dir.parse()?,
-            ops: Opts { ..Default::default() },
+            ops,
         };
 
         Ok(bitcask)
@@ -182,6 +182,7 @@ mod test {
     use std::fs::File;
     use std::io::{Read, Seek, SeekFrom};
     use std::path::Path;
+    use log::Level::Debug;
 
     use tempdir::TempDir;
 
@@ -192,7 +193,7 @@ mod test {
     #[test]
     fn it_should_load_cask_from_file() {
         let dir = TempDir::new("bitcask-").unwrap();
-        let cask_result = FsStorage::open(dir.path().to_str().unwrap());
+        let cask_result = FsStorage::open(dir.path().to_str().unwrap(), Default::default());
 
         assert!(cask_result.is_ok());
         assert_eq!(0, cask_result.unwrap().position);
@@ -202,7 +203,7 @@ mod test {
     fn it_should_put_to_file() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut write_cask = FsStorage::open(dir.path().to_str().unwrap()).unwrap();
+        let mut write_cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
         let key = b"foo";
         let val = b"bar";
 
@@ -239,7 +240,7 @@ mod test {
     fn it_should_get() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut cask = FsStorage::open(dir.path().to_str().unwrap()).unwrap();
+        let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
 
         let pairs: Vec<(&[u8], &[u8])> = vec![
             (b"key1", b"val1"),
