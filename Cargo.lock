@@ -36,22 +36,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "bitcask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "crc32fast",
- "criterion",
- "fs2",
- "log",
- "nix",
- "rand 0.8.5",
- "tempdir",
- "thiserror",
-]
-
-[[package]]
 name = "bitflags"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -225,6 +209,22 @@ checksum = "ac3e13f66a2f95e32a39eaa81f6b95d42878ca0e1db0c7543723dfe12557e860"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "fakir"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "crc32fast",
+ "criterion",
+ "fs2",
+ "log",
+ "nix",
+ "rand 0.8.5",
+ "tempdir",
+ "thiserror",
 ]
 
 [[package]]
