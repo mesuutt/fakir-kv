@@ -46,15 +46,21 @@ struct Data {
 pub trait Storage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()>;
     fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: Reader;
+    fn sync(&mut self) -> Result<()>;
 }
 
 pub trait Reader {
     fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>>;
 }
 
+
+pub trait Writer {
+    fn write(&mut self, buf: &[u8]) -> Result<()>;
+}
+
 impl Data {
-    pub fn from(p: &[u8]) -> Self{
-        Data{
+    pub fn from(p: &[u8]) -> Self {
+        Data {
             crc: 0,
             ts_tamp: 0,
             key_size: 0,

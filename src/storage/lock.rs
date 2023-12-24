@@ -2,8 +2,6 @@ use std::{fs, process};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use std::thread::sleep;
-use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use fs2::FileExt;

@@ -8,12 +8,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Context, Result};
 use bytes::BufMut;
 use fs2::FileExt;
+use log::debug;
 
-use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KeyDir, lock, Reader, Storage};
+use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KeyDir, lock, Reader, Storage, Writer};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Opts {
     expiry_secs: u32,
+    sync_on_put: bool,
 }
 
 #[derive(Debug)]
@@ -44,7 +46,6 @@ impl FsStorage {
             .create(true)
             .open(&path)?;
 
-
         let read_file = OpenOptions::new()
             .read(true)
             .open(path)?;
@@ -56,12 +57,11 @@ impl FsStorage {
             position: 0,
             key_dir: Default::default(),
             dir: dir.parse()?,
-            ops: Opts { expiry_secs: 0 },
+            ops: Opts { ..Default::default() },
         };
 
         Ok(bitcask)
     }
-
 
     fn make_filename(file_id: u64) -> String {
         format!("{}.bitcask.data", file_id)
@@ -70,8 +70,6 @@ impl FsStorage {
 
 impl Storage for FsStorage {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
-        self.active_file.seek(SeekFrom::Start(self.position as u64))?;
-
         /*
         dbg!(CRC_SIZE);
         dbg!(TS_SIZE);
@@ -81,20 +79,19 @@ impl Storage for FsStorage {
         dbg!(CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE);
         */
 
-        let ts_tamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
-
+        let ts_tamp = current_timestamp();
         let entry_bytes = create_entry(key, val, ts_tamp);
+        let entry_start_pos = self.position;
 
-        self.active_file.write_all(&entry_bytes).context("file write failed")?;
-        // self.active_file.sync_data()?;
+        self.write(&entry_bytes)?;
+        self.sync()?;
+
         self.key_dir.insert(key.to_vec(), Header {
             file_id: self.active_file_id,
             val_size: val.len() as u32,
-            val_offset: self.position + (KEY_OFFSET + key.len()) as u32,
+            val_offset: entry_start_pos + (KEY_OFFSET + key.len()) as u32,
             ts_tamp,
         });
-
-        self.position += entry_bytes.len() as u32;
 
         Ok(())
     }
@@ -111,6 +108,24 @@ impl Storage for FsStorage {
                 Ok(Some(self.read_val(h.file_id, h.val_offset, h.val_size)?))
             }
         }
+    }
+
+    #[inline]
+    fn sync(&mut self) -> Result<()> {
+        if self.ops.sync_on_put {
+            self.active_file.sync_data()?;
+        }
+        Ok(())
+    }
+}
+
+impl Writer for FsStorage {
+    fn write(&mut self, buf: &[u8]) -> Result<()> {
+        self.active_file.seek(SeekFrom::Start(self.position as u64))?;
+        self.active_file.write_all(&buf).context("file write failed")?;
+        self.position += buf.len() as u32;
+
+        Ok(())
     }
 }
 
@@ -132,10 +147,15 @@ fn create_entry(key: &[u8], val: &[u8], ts_tamp: u32) -> Vec<u8> {
 
 fn expiry_time(expire_secs: u32) -> u32 {
     if expire_secs > 0 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32 - expire_secs
+        current_timestamp() - expire_secs
     } else {
         0
     }
+}
+
+#[inline]
+fn current_timestamp() -> u32 {
+    return SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
 }
 
 impl Drop for FsStorage {
