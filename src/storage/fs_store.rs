@@ -10,7 +10,7 @@ use bytes::BufMut;
 use fs2::FileExt;
 use log::debug;
 
-use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KeyDir, lock, Reader, Storage, Writer};
+use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KeyDir, file_lock, Reader, Storage, Writer};
 
 #[derive(Debug, Default)]
 pub struct Opts {
@@ -32,7 +32,7 @@ pub struct FsStorage {
 impl FsStorage {
     pub fn open(dir: &str) -> Result<Self> {
         fs::create_dir_all(dir).context("data directory creation failed")?;
-        lock::try_lock_db(dir)?;
+        file_lock::try_lock_db(dir)?;
 
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let path = Path::new(dir).join(FsStorage::make_filename(active_file_id));
