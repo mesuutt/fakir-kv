@@ -11,7 +11,7 @@ use fs2::FileExt;
 use crate::cask::Writer;
 
 use crate::cask::{Reader, FsBackend, Opts};
-use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, Header, KEY_OFFSET, KeyDir};
+use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, Header, KEY_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR};
 
 #[derive(Debug)]
 pub struct FsStorage {
@@ -89,6 +89,13 @@ impl Writer for FsStorage {
             ts_tamp,
         });
 
+        Ok(())
+    }
+
+    fn delete(&mut self, key: &[u8]) -> Result<()> {
+        // use backspace char as tombstone marker
+        self.put(key, &vec![TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
+        self.key_dir.remove(key);
         Ok(())
     }
 }
@@ -234,6 +241,8 @@ mod test {
 
     #[test]
     fn it_should_get() {
+        // TODO: move to integration test
+
         // given
         let dir = TempDir::new("bitcask-").unwrap();
         let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
@@ -250,5 +259,20 @@ mod test {
             let actual = cask.get(key).unwrap().unwrap();
             assert_eq!(val, actual.as_slice());
         }
+    }
+
+    #[test]
+    fn it_should_delete() {
+        // TODO: move to integration test
+        // write a unit test for here
+
+        // given
+        let dir = TempDir::new("bitcask-").unwrap();
+        let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
+
+        cask.put(b"k1", b"v1").unwrap();
+
+        assert!(cask.delete(b"k1").is_ok());
+        assert!(cask.get(b"k1").unwrap().is_none());
     }
 }

@@ -21,6 +21,8 @@ const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
 const VAL_SIZE_OFFSET: usize = KEY_SIZE_OFFSET + KEY_SIZE;
 const KEY_OFFSET: usize = VAL_SIZE_OFFSET + VAL_SIZE;
 
+const TOMBSTONE_MARKER_CHAR: u8 = 8;
+
 // TODO: we can use BtreeMap, it can be slower then HashMap at some cases:
 // https://www.dotnetperls.com/btreemap-rust
 type KeyDir = HashMap<Vec<u8>, Header>;

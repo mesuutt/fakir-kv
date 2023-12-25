@@ -13,8 +13,10 @@ fn main() {
         }
     };
 
-    cask.put(b"a1", b"a1 val");
+    cask.put(b"a1", b"0");
     cask.put(b"a2", b"a2 val");
+    cask.delete(b"a1");
+    let result = cask.get(b"a2");
 
     let key = "a1";
     if let Some(x) = cask.get(key.as_bytes()).unwrap() {
