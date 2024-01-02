@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom, stderr, Write};
 use std::os::fd::AsFd;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -22,7 +22,7 @@ pub struct FsStorage {
     dir: PathBuf,
     read_file: fs::File,
     ops: Opts,
-    rw: RwLock<u64>, // keeps active_file_id
+    mu: Mutex<u64>, // keeps active_file_id
 }
 
 impl FsStorage {}
@@ -93,6 +93,7 @@ impl FsWriter for FsStorage {
 
 impl FsReader for FsStorage {
     fn read_from_file(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
+        // let read_guard = self.rw.read().unwrap();
         self.read_file.seek(SeekFrom::Start(offset as u64))?;
 
         let mut buf = vec![0u8; size as usize];
@@ -120,7 +121,7 @@ impl FsBackend for FsStorage {
             position: 0,
             key_dir: Default::default(),
             dir: dir_path,
-            rw: RwLock::new(active_file_id),
+            mu:  Mutex::new(active_file_id),
             ops,
         };
 
@@ -128,14 +129,14 @@ impl FsBackend for FsStorage {
     }
 
     fn new_active_file(&mut self) -> Result<()> {
-        let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let mut guard = self.mu.lock().unwrap();
 
+        let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let filename = format!("{}.bitcask.data", active_file_id);
 
         let write_file = fs_utils::open_file_for_write(&self.dir, &filename)?;
         let read_file = fs_utils::open_file_for_read(&self.dir, &filename)?;
 
-        let mut guard = self.rw.write().unwrap();
         *guard = active_file_id;
         self.active_file.sync_all()?;
         self.active_file = write_file;
