@@ -76,7 +76,6 @@ impl Writer for FsStorage {
     }
 
     fn delete(&mut self, key: &[u8]) -> Result<()> {
-        // use backspace char as tombstone marker
         self.put(key, &vec![TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
         self.key_dir.remove(key);
         Ok(())
