@@ -1,17 +1,17 @@
 use std::fs;
-use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, stderr, Write};
 use std::os::fd::AsFd;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use bytes::BufMut;
 use fs2::FileExt;
-use crate::cask::Writer;
 
-use crate::cask::{Reader, FsBackend, Opts};
-use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, Header, KEY_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR};
+use crate::cask::{Opts, Reader};
+use crate::cask::Writer;
+use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, fs_utils, FsBackend, FsReader, FsWriter, Header, KEY_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR};
 
 #[derive(Debug)]
 pub struct FsStorage {
@@ -22,34 +22,13 @@ pub struct FsStorage {
     dir: PathBuf,
     read_file: fs::File,
     ops: Opts,
+    rw: RwLock<u64>, // keeps active_file_id
 }
 
-impl FsStorage {
-    fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
-        self.read_file.seek(SeekFrom::Start(offset as u64))?;
-
-        let mut buf = vec![0u8; size as usize];
-        self.read_file.read_exact(&mut buf)?;
-
-        Ok(buf)
-    }
-
-    fn write(&mut self, buf: &[u8]) -> Result<()> {
-        // self.active_file.seek(SeekFrom::Start(self.position as u64))?;
-        self.active_file.write_all(&buf).context("file write failed")?;
-        self.position += buf.len() as u32;
-
-        Ok(())
-    }
-
-    #[inline]
-    fn make_filename(file_id: u64) -> String {
-        format!("{}.bitcask.data", file_id)
-    }
-}
+impl FsStorage {}
 
 impl Reader for FsStorage {
-    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: Reader {
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: FsReader {
         match self.key_dir.get(key) {
             None => { Ok(None) }
             Some(h) => {
@@ -58,7 +37,7 @@ impl Reader for FsStorage {
                     return Ok(None);
                 }
 
-                Ok(Some(self.read_val(h.file_id, h.val_offset, h.val_size)?))
+                Ok(Some(self.read_from_file(h.file_id, h.val_offset, h.val_size)?))
             }
         }
     }
@@ -79,7 +58,7 @@ impl Writer for FsStorage {
         let entry_bytes = create_entry(key, val, ts_tamp);
         let entry_start_pos = self.position;
 
-        self.write(&entry_bytes)?;
+        self.write_to_file(&entry_bytes)?;
         self.sync()?;
 
         self.key_dir.insert(key.to_vec(), Header {
@@ -88,6 +67,10 @@ impl Writer for FsStorage {
             val_offset: entry_start_pos + (KEY_OFFSET + key.len()) as u32,
             ts_tamp,
         });
+
+        if self.position > self.ops.max_file_size {
+            self.new_active_file()?;
+        }
 
         Ok(())
     }
@@ -100,26 +83,36 @@ impl Writer for FsStorage {
     }
 }
 
+impl FsWriter for FsStorage {
+    fn write_to_file(&mut self, buf: &[u8]) -> Result<()> {
+        self.active_file.write_all(&buf).context("file write failed")?;
+        self.position += buf.len() as u32;
+
+        Ok(())
+    }
+}
+
+impl FsReader for FsStorage {
+    fn read_from_file(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
+        self.read_file.seek(SeekFrom::Start(offset as u64))?;
+
+        let mut buf = vec![0u8; size as usize];
+        self.read_file.read_exact(&mut buf)?;
+
+        Ok(buf)
+    }
+}
+
 impl FsBackend for FsStorage {
     fn open(dir: &str, ops: Opts) -> Result<Self> {
         fs::create_dir_all(dir).context("data directory creation failed")?;
         file_lock::try_lock_db(dir)?;
+        let dir_path = dir.parse()?;
 
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let path = Path::new(dir).join(FsStorage::make_filename(active_file_id));
-        if let Ok(_) = fs::metadata(&path) {
-            return Err(anyhow!("not implemented yet"));
-        }
-
-        let active_file = OpenOptions::new()
-            .append(true)
-            // .read(true)
-            .create(true)
-            .open(&path)?;
-
-        let read_file = OpenOptions::new()
-            .read(true)
-            .open(path)?;
+        let filename = format!("{}.bitcask.data", active_file_id);
+        let active_file = fs_utils::open_file_for_write(&dir_path, &filename)?;
+        let read_file = fs_utils::open_file_for_read(&dir_path, &filename)?;
 
         let bitcask = FsStorage {
             active_file,
@@ -127,11 +120,31 @@ impl FsBackend for FsStorage {
             active_file_id,
             position: 0,
             key_dir: Default::default(),
-            dir: dir.parse()?,
+            dir: dir_path,
+            rw: RwLock::new(active_file_id),
             ops,
         };
 
         Ok(bitcask)
+    }
+
+    fn new_active_file(&mut self) -> Result<()> {
+        let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+        let filename = format!("{}.bitcask.data", active_file_id);
+
+        let write_file = fs_utils::open_file_for_write(&self.dir, &filename)?;
+        let read_file = fs_utils::open_file_for_read(&self.dir, &filename)?;
+
+        let mut guard = self.rw.write().unwrap();
+        *guard = active_file_id;
+        self.active_file.sync_all()?;
+        self.active_file = write_file;
+        self.active_file_id = active_file_id;
+        self.read_file = read_file;
+        self.position = 0;
+
+        Ok(())
     }
 
     #[inline]
@@ -182,14 +195,12 @@ impl Drop for FsStorage {
 
 #[cfg(test)]
 mod test {
-    use std::fs::File;
     use std::io::{Read, Seek, SeekFrom};
-    use std::path::Path;
 
     use tempdir::TempDir;
-    use crate::cask::{FsBackend, Reader, Writer};
 
-    use crate::storage::{CRC_OFFSET, CRC_SIZE, KEY_OFFSET, KEY_SIZE_OFFSET, VAL_SIZE_OFFSET};
+    use crate::cask::{Reader, Writer};
+    use crate::storage::{CRC_OFFSET, CRC_SIZE, fs_utils, FsBackend, KEY_OFFSET, KEY_SIZE_OFFSET, VAL_SIZE_OFFSET};
 
     use super::FsStorage;
 
@@ -216,7 +227,10 @@ mod test {
         // then
         let mut payload = vec![0; KEY_OFFSET + key.len() + val.len()];
 
-        let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(write_cask.active_file_id))).unwrap();
+        // let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(write_cask.active_file_id))).unwrap();
+        let filename = format!("{}.bitcask.data", write_cask.active_file_id);
+        let mut cask_file = fs_utils::open_file_for_read(&dir.into_path(), &filename).unwrap();
+
         cask_file.seek(SeekFrom::Start(0)).unwrap();
         cask_file.read_exact(&mut payload).unwrap();
 

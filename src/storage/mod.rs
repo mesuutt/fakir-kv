@@ -4,9 +4,11 @@ use std::mem::size_of;
 use anyhow::Context;
 
 pub use fs_store::FsStorage;
+use crate::cask::Opts;
 
 mod fs_store;
 mod file_lock;
+mod fs_utils;
 
 // [crc|ts_tamp|ksz|vsz|key|val]
 
@@ -35,33 +37,16 @@ struct Header {
     ts_tamp: u32,
 }
 
-struct Data {
-    crc: u32,
-    ts_tamp: u64,
-    key_size: u32,
-    val_size: u32,
-    key: Vec<u8>,
-    val: Vec<u8>,
+pub trait FsBackend {
+    fn open(dir: &str, options: Opts) -> anyhow::Result<Self> where Self: Sized;
+    fn new_active_file(&mut self) -> anyhow::Result<()>;
+    fn sync(&mut self) -> anyhow::Result<()>;
 }
 
-impl Data {
-    pub fn from(p: &[u8]) -> Self {
-        Data {
-            crc: 0,
-            ts_tamp: 0,
-            key_size: 0,
-            val_size: 0,
-            key: vec![],
-            val: vec![],
-        }
-    }
+pub trait FsReader {
+    fn read_from_file(&mut self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>>;
 }
 
-/*pub trait Reader {
-    fn read_val(&mut self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>>;
+pub trait FsWriter {
+    fn write_to_file(&mut self, buf: &[u8]) -> anyhow::Result<()>;
 }
-
-pub trait Writer {
-    fn write(&mut self, buf: &[u8]) -> anyhow::Result<()>;
-}
-*/
