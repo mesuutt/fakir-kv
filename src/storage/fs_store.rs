@@ -149,6 +149,9 @@ impl FsBackend for FsStorage {
 
     #[inline]
     fn sync(&mut self) -> Result<()> {
+        // TODO: we can create flush_on_put config for flushing after puts.
+        // flushing content can be not needed for some use cases?
+        self.active_file.flush()?;
         if self.ops.sync_on_put {
             self.active_file.sync_data()?;
         }
