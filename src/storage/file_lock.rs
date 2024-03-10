@@ -14,38 +14,33 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
         .write(true)
         .open(&path);
 
-    match file {
-        Ok(mut f) => {
-            write_pid(&mut f)?
-        }
-        Err(_) => {
-            debug!("lock file exist.");
+    if let Ok(mut f) = file {
+        return Ok(write_pid(&mut f)?);
+    }
 
-            let mut file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)?;
+    debug!("lock file exist.");
 
-            file.try_lock_exclusive().context("process already running")?;
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)?;
 
-            let mut pid = String::new();
-            file.read_to_string(&mut pid)?;
+    file.try_lock_exclusive().context("process already running")?;
 
-            if pid == "" {
-                return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display()));
-            }
+    let mut pid = String::new();
+    file.read_to_string(&mut pid)?;
 
-            unsafe {
-                if nix::libc::kill(pid.parse()?, 0) == 0 {
-                    return bail!("process already running");
-                }
-            }
+    if pid == "" {
+        return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display()));
+    }
 
-            write_pid(&mut file)?
+    unsafe {
+        if libc::kill(pid.parse()?, 0) == 0 {
+            return bail!("process already running");
         }
     }
 
-    Ok(())
+    Ok(write_pid(&mut file)?)
 }
 
 
