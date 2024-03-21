@@ -1,37 +1,36 @@
 use std::{fs, process};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context};
 use fs2::FileExt;
 use log::debug;
 
-pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
-    let path = Path::new(dir).join("pid.lock");
-    let file = OpenOptions::new()
+pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> {
+    let pid_file_path = dir.as_ref().join("pid.lock");
+
+    if let Ok(mut f) = OpenOptions::new()
         .create_new(true)// return err if file already exists
         .write(true)
-        .open(&path);
-
-    if let Ok(mut f) = file {
+        .open(&pid_file_path) {
         return Ok(write_pid(&mut f)?);
     }
 
     debug!("lock file exist.");
 
-    let mut file = OpenOptions::new()
+    let mut pid_file = OpenOptions::new()
         .read(true)
         .write(true)
-        .open(&path)?;
+        .open(&pid_file_path)?;
 
-    file.try_lock_exclusive().context("process already running")?;
+    pid_file.try_lock_exclusive().context("process already running")?;
 
     let mut pid = String::new();
-    file.read_to_string(&mut pid)?;
+    pid_file.read_to_string(&mut pid)?;
 
     if pid == "" {
-        return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", path.clone().display()));
+        return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", pid_file_path.clone().display()));
     }
 
     unsafe {
@@ -40,7 +39,7 @@ pub(crate) fn try_lock_db(dir: &str) -> anyhow::Result<()> {
         }
     }
 
-    Ok(write_pid(&mut file)?)
+    Ok(write_pid(&mut pid_file)?)
 }
 
 

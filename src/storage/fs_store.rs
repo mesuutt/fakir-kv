@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use bytes::BufMut;
 use fs2::FileExt;
 
-use crate::cask::{Opts, Reader};
+use crate::cask::{Config, Reader};
 use crate::cask::Writer;
 use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, fs_utils, FsBackend, FsReader, FsWriter, Header, KEY_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR};
 
@@ -19,9 +19,8 @@ pub struct FsStorage {
     active_file_id: u64,
     position: u32,
     key_dir: KeyDir,
-    dir: PathBuf,
     read_file: fs::File,
-    ops: Opts,
+    conf: Config,
     mu: Mutex<u64>, // keeps active_file_id
 }
 
@@ -32,7 +31,7 @@ impl Reader for FsStorage {
         match self.key_dir.get(key) {
             None => { Ok(None) }
             Some(h) => {
-                if h.ts_tamp < expiry_time(self.ops.expiry_secs) {
+                if h.ts_tamp < expiry_time(self.conf.expiry_secs) {
                     self.key_dir.remove(key);
                     return Ok(None);
                 }
@@ -68,7 +67,7 @@ impl Writer for FsStorage {
             ts_tamp,
         });
 
-        if self.position > self.ops.max_file_size {
+        if self.position > self.conf.max_file_size {
             self.new_active_file()?;
         }
 
@@ -104,15 +103,14 @@ impl FsReader for FsStorage {
 }
 
 impl FsBackend for FsStorage {
-    fn open(dir: &str, ops: Opts) -> Result<Self> {
-        fs::create_dir_all(dir).context("data directory creation failed")?;
-        file_lock::try_lock_db(dir)?;
-        let dir_path = dir.parse()?;
+    fn open(conf: Config) -> Result<Self> {
+        fs::create_dir_all(&conf.path).context("data directory creation failed")?;
+        file_lock::try_lock_db(&conf.path)?;
 
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let filename = format!("{}.bitcask.data", active_file_id);
-        let active_file = fs_utils::open_file_for_write(&dir_path, &filename)?;
-        let read_file = fs_utils::open_file_for_read(&dir_path, &filename)?;
+        let active_file = fs_utils::open_file_for_write(&conf.path, &filename)?;
+        let read_file = fs_utils::open_file_for_read(&conf.path, &filename)?;
 
         let bitcask = FsStorage {
             active_file,
@@ -120,9 +118,8 @@ impl FsBackend for FsStorage {
             active_file_id,
             position: 0,
             key_dir: Default::default(),
-            dir: dir_path,
-            mu:  Mutex::new(active_file_id),
-            ops,
+            mu: Mutex::new(active_file_id),
+            conf,
         };
 
         Ok(bitcask)
@@ -134,8 +131,8 @@ impl FsBackend for FsStorage {
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let filename = format!("{}.bitcask.data", active_file_id);
 
-        let write_file = fs_utils::open_file_for_write(&self.dir, &filename)?;
-        let read_file = fs_utils::open_file_for_read(&self.dir, &filename)?;
+        let write_file = fs_utils::open_file_for_write(&self.conf.path, &filename)?;
+        let read_file = fs_utils::open_file_for_read(&self.conf.path, &filename)?;
 
         *guard = active_file_id;
         self.active_file.sync_all()?;
@@ -152,7 +149,7 @@ impl FsBackend for FsStorage {
         // TODO: we can create flush_on_put config for flushing after puts.
         // flushing content can be not needed for some use cases?
         self.active_file.flush()?;
-        if self.ops.sync_on_put {
+        if self.conf.sync_on_put {
             self.active_file.sync_data()?;
         }
         Ok(())
@@ -202,15 +199,17 @@ mod test {
 
     use tempdir::TempDir;
 
-    use crate::cask::{Reader, Writer};
+    use crate::cask::{Config, Reader, Writer};
     use crate::storage::{CRC_OFFSET, CRC_SIZE, fs_utils, FsBackend, KEY_OFFSET, KEY_SIZE_OFFSET, VAL_SIZE_OFFSET};
 
     use super::FsStorage;
 
     #[test]
     fn it_should_load_cask_from_file() {
-        let dir = TempDir::new("bitcask-").unwrap();
-        let cask_result = FsStorage::open(dir.path().to_str().unwrap(), Default::default());
+        let cask_result = FsStorage::open(Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        });
 
         assert!(cask_result.is_ok());
         assert_eq!(0, cask_result.unwrap().position);
@@ -220,7 +219,10 @@ mod test {
     fn it_should_put_to_file() {
         // given
         let dir = TempDir::new("bitcask-").unwrap();
-        let mut write_cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
+        let mut write_cask = FsStorage::open(Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        }).unwrap();
         let key = b"foo";
         let val = b"bar";
 
@@ -261,8 +263,10 @@ mod test {
         // TODO: move to integration test
 
         // given
-        let dir = TempDir::new("bitcask-").unwrap();
-        let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
+        let mut cask = FsStorage::open(Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        }).unwrap();
 
         let pairs: Vec<(&[u8], &[u8])> = vec![
             (b"key1", b"val1"),
@@ -284,8 +288,10 @@ mod test {
         // write a unit test for here
 
         // given
-        let dir = TempDir::new("bitcask-").unwrap();
-        let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
+        let mut cask = FsStorage::open(Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        }).unwrap();
 
         cask.put(b"k1", b"v1").unwrap();
 

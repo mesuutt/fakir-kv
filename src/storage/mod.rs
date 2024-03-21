@@ -4,7 +4,7 @@ use std::mem::size_of;
 use anyhow::Context;
 
 pub use fs_store::FsStorage;
-use crate::cask::Opts;
+use crate::cask::Config;
 
 mod fs_store;
 mod file_lock;
@@ -38,7 +38,7 @@ struct Header {
 }
 
 pub trait FsBackend {
-    fn open(dir: &str, options: Opts) -> anyhow::Result<Self> where Self: Sized;
+    fn open(conf: Config) -> anyhow::Result<Self> where Self: Sized;
     fn new_active_file(&mut self) -> anyhow::Result<()>;
     fn sync(&mut self) -> anyhow::Result<()>;
 }
