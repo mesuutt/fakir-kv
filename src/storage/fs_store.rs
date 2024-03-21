@@ -218,9 +218,9 @@ mod test {
     #[test]
     fn it_should_put_to_file() {
         // given
-        let dir = TempDir::new("bitcask-").unwrap();
+        let dir = TempDir::new("bitcask-").unwrap().into_path();
         let mut write_cask = FsStorage::open(Config {
-            path: TempDir::new("bitcask-").unwrap().into_path(),
+            path: dir.clone(),
             ..Default::default()
         }).unwrap();
         let key = b"foo";
@@ -234,7 +234,7 @@ mod test {
 
         // let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(write_cask.active_file_id))).unwrap();
         let filename = format!("{}.bitcask.data", write_cask.active_file_id);
-        let mut cask_file = fs_utils::open_file_for_read(&dir.into_path(), &filename).unwrap();
+        let mut cask_file = fs_utils::open_file_for_read(&dir, &filename).unwrap();
 
         cask_file.seek(SeekFrom::Start(0)).unwrap();
         cask_file.read_exact(&mut payload).unwrap();
