@@ -4,13 +4,13 @@ use rand::seq::SliceRandom;
 use tempdir::TempDir;
 
 use fakir::storage::{FsBackend, FsStorage};
-use fakir::cask::{Reader, Writer};
+use fakir::cask::{Config, Reader, Writer};
 
 pub fn bench(c: &mut Criterion) {
     let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = (1..500).into_iter().map(|x| (format!("k_{}", x).as_bytes().to_vec(), format!("val_{}", x).as_bytes().to_vec())).collect();
-    let dir = TempDir::new("bitcask-").unwrap();
-    println!("storage dir: {:?}", &dir.path());
-    let mut cask = FsStorage::open(dir.path().to_str().unwrap(), Default::default()).unwrap();
+    let dir = TempDir::new("bitcask-").unwrap().into_path();
+    println!("storage dir: {:?}", &dir);
+    let mut cask = FsStorage::open(Config { path: dir, ..Default::default() }).unwrap();
 
     c.bench_function("cask.put", |b| b.iter(|| {
         for (k, v) in pairs.clone() {

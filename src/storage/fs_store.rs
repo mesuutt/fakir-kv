@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use bytes::BufMut;
-use fs2::FileExt;
+
 
 use crate::cask::{Config, Reader};
 use crate::cask::Writer;
@@ -89,7 +89,7 @@ impl FsWriter for FsStorage {
 }
 
 impl FsReader for FsStorage {
-    fn read_from_file(&mut self, file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
+    fn read_from_file(&mut self, _file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
         // let read_guard = self.rw.read().unwrap();
         self.read_file.seek(SeekFrom::Start(offset as u64))?;
 

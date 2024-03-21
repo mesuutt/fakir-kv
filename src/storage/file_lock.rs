@@ -30,12 +30,12 @@ pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> 
     pid_file.read_to_string(&mut pid)?;
 
     if pid.is_empty() {
-        return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", pid_file_path.clone().display()));
+        bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", pid_file_path.clone().display()));
     }
 
     unsafe {
         if libc::kill(pid.parse()?, 0) == 0 {
-            return bail!("process already running");
+            bail!("process already running");
         }
     }
 
