@@ -1,7 +1,7 @@
 use std::{fs, process};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 
 use anyhow::{bail, Context};
 use fs2::FileExt;
@@ -14,7 +14,7 @@ pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> 
         .create_new(true)// return err if file already exists
         .write(true)
         .open(&pid_file_path) {
-        return Ok(write_pid(&mut f)?);
+        return write_pid(&mut f);
     }
 
     debug!("lock file exist.");
@@ -29,7 +29,7 @@ pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> 
     let mut pid = String::new();
     pid_file.read_to_string(&mut pid)?;
 
-    if pid == "" {
+    if pid.is_empty() {
         return bail!(format!("cannot read PID from lock file({}). You can remove lock file after ensure server is not running.", pid_file_path.clone().display()));
     }
 
@@ -39,7 +39,7 @@ pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> 
         }
     }
 
-    Ok(write_pid(&mut pid_file)?)
+    write_pid(&mut pid_file)
 }
 
 

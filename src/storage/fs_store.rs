@@ -1,8 +1,6 @@
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, stderr, Write};
-use std::os::fd::AsFd;
-use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -75,7 +73,7 @@ impl Writer for FsStorage {
     }
 
     fn delete(&mut self, key: &[u8]) -> Result<()> {
-        self.put(key, &vec![TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
+        self.put(key, &[TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
         self.key_dir.remove(key);
         Ok(())
     }
@@ -83,7 +81,7 @@ impl Writer for FsStorage {
 
 impl FsWriter for FsStorage {
     fn write_to_file(&mut self, buf: &[u8]) -> Result<()> {
-        self.active_file.write_all(&buf).context("file write failed")?;
+        self.active_file.write_all(buf).context("file write failed")?;
         self.position += buf.len() as u32;
 
         Ok(())
@@ -182,7 +180,7 @@ fn expiry_time(expire_secs: u32) -> u32 {
 
 #[inline]
 fn current_timestamp() -> u32 {
-    return SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32
 }
 
 impl Drop for FsStorage {

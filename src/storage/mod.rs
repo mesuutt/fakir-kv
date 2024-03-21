@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::mem::size_of;
 
-use anyhow::Context;
-
 pub use fs_store::FsStorage;
+
 use crate::cask::Config;
 
 mod fs_store;
