@@ -8,7 +8,7 @@ use fs2::FileExt;
 use log::debug;
 
 pub(crate) fn try_lock_db<P>(dir: P) -> anyhow::Result<()> where P: AsRef<Path> {
-    let pid_file_path = dir.as_ref().join("pid.lock");
+    let pid_file_path = dir.as_ref().join("bitcask.write.lock");
 
     if let Ok(mut f) = OpenOptions::new()
         .create_new(true)// return err if file already exists

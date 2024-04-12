@@ -17,6 +17,7 @@ crc32fast = "1.4.0"
 fs2 = "0.4.3"
 log = "0.4.21"
 libc = { version = "0.2.153" }
+crossbeam = { version = "0.8.4", features = ["crossbeam-queue"] }
 
 [dev-dependencies]
 criterion = "0.5.1"

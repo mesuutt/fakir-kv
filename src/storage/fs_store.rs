@@ -1,15 +1,16 @@
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, stderr, Write};
-use std::sync::{Mutex};
+use std::path::Path;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+
 
 use anyhow::{Context, Result};
 use bytes::BufMut;
 
-
-use crate::cask::{Config, Reader};
-use crate::cask::Writer;
-use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, fs_utils, FsBackend, FsReader, FsWriter, Header, KEY_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR};
+use crate::storage::{CRC_OFFSET, CRC_SIZE, file_lock, utils, FsBackend, FsReader, FsWriter, Header, KEY_OFFSET, KEY_SIZE_OFFSET, KeyDir, Reader, TOMBSTONE_MARKER_CHAR, VAL_SIZE_OFFSET, Writer};
+use crate::storage::config::Config;
+use crate::storage::utils::build_data_file_name;
 
 #[derive(Debug)]
 pub struct FsStorage {
@@ -17,102 +18,23 @@ pub struct FsStorage {
     active_file_id: u64,
     position: u32,
     key_dir: KeyDir,
-    read_file: fs::File,
     conf: Config,
     mu: Mutex<u64>, // keeps active_file_id
 }
 
-impl FsStorage {}
+impl FsStorage {
 
-impl Reader for FsStorage {
-    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> where Self: FsReader {
-        match self.key_dir.get(key) {
-            None => { Ok(None) }
-            Some(h) => {
-                if h.ts_tamp < expiry_time(self.conf.expiry_secs) {
-                    self.key_dir.remove(key);
-                    return Ok(None);
-                }
-
-                Ok(Some(self.read_from_file(h.file_id, h.val_offset, h.val_size)?))
-            }
-        }
-    }
-}
-
-impl Writer for FsStorage {
-    fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
-        /*
-        dbg!(CRC_SIZE);
-        dbg!(TS_SIZE);
-        dbg!(KEY_SIZE);
-        dbg!(KEY_SIZE_OFFSET, KEY_OFFSET);
-        dbg!(VAL_SIZE, VAL_SIZE_OFFSET);
-        dbg!(CRC_SIZE + TS_SIZE + KEY_SIZE + VAL_SIZE);
-        */
-
-        let ts_tamp = current_timestamp();
-        let entry_bytes = create_entry(key, val, ts_tamp);
-        let entry_start_pos = self.position;
-
-        self.write_to_file(&entry_bytes)?;
-        self.sync()?;
-
-        self.key_dir.insert(key.to_vec(), Header {
-            file_id: self.active_file_id,
-            val_size: val.len() as u32,
-            val_offset: entry_start_pos + (KEY_OFFSET + key.len()) as u32,
-            ts_tamp,
-        });
-
-        if self.position > self.conf.max_file_size {
-            self.new_active_file()?;
-        }
-
-        Ok(())
-    }
-
-    fn delete(&mut self, key: &[u8]) -> Result<()> {
-        self.put(key, &[TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
-        self.key_dir.remove(key);
-        Ok(())
-    }
-}
-
-impl FsWriter for FsStorage {
-    fn write_to_file(&mut self, buf: &[u8]) -> Result<()> {
-        self.active_file.write_all(buf).context("file write failed")?;
-        self.position += buf.len() as u32;
-
-        Ok(())
-    }
-}
-
-impl FsReader for FsStorage {
-    fn read_from_file(&mut self, _file_id: u64, offset: u32, size: u32) -> Result<Vec<u8>> {
-        // let read_guard = self.rw.read().unwrap();
-        self.read_file.seek(SeekFrom::Start(offset as u64))?;
-
-        let mut buf = vec![0u8; size as usize];
-        self.read_file.read_exact(&mut buf)?;
-
-        Ok(buf)
-    }
-}
-
-impl FsBackend for FsStorage {
-    fn open(conf: Config) -> Result<Self> {
+    // log_writer'a tasindi
+    pub fn open(conf: Config) -> Result<Self> {
         fs::create_dir_all(&conf.path).context("data directory creation failed")?;
         file_lock::try_lock_db(&conf.path)?;
 
         let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let filename = format!("{}.bitcask.data", active_file_id);
-        let active_file = fs_utils::open_file_for_write(&conf.path, &filename)?;
-        let read_file = fs_utils::open_file_for_read(&conf.path, &filename)?;
+        let active_file = utils::open_file_for_write(&conf.path, &filename)?;
 
         let bitcask = FsStorage {
             active_file,
-            read_file,
             active_file_id,
             position: 0,
             key_dir: Default::default(),
@@ -123,25 +45,7 @@ impl FsBackend for FsStorage {
         Ok(bitcask)
     }
 
-    fn new_active_file(&mut self) -> Result<()> {
-        let mut guard = self.mu.lock().unwrap();
-
-        let active_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let filename = format!("{}.bitcask.data", active_file_id);
-
-        let write_file = fs_utils::open_file_for_write(&self.conf.path, &filename)?;
-        let read_file = fs_utils::open_file_for_read(&self.conf.path, &filename)?;
-
-        *guard = active_file_id;
-        self.active_file.sync_all()?;
-        self.active_file = write_file;
-        self.active_file_id = active_file_id;
-        self.read_file = read_file;
-        self.position = 0;
-
-        Ok(())
-    }
-
+    // log_writer'a tasindi
     #[inline]
     fn sync(&mut self) -> Result<()> {
         // TODO: we can create flush_on_put config for flushing after puts.
@@ -152,44 +56,17 @@ impl FsBackend for FsStorage {
         }
         Ok(())
     }
-}
 
-fn create_entry(key: &[u8], val: &[u8], ts_tamp: u32) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(KEY_OFFSET + key.len() + val.len());
+    fn write_to_file(&mut self, buf: &[u8]) -> Result<()> {
+        self.active_file.write_all(buf).context("file write failed")?;
+        self.position += buf.len() as u32;
 
-    payload.put_u32(0); // empty space for crc
-    payload.put_u32(ts_tamp);
-    payload.put_u32(key.len() as u32);
-    payload.put_u32(val.len() as u32);
-    payload.put(key);
-    payload.put(val);
-
-    let checksum = crc32fast::hash(&payload[CRC_OFFSET + CRC_SIZE..]);
-    payload.splice(0..CRC_SIZE, checksum.to_be_bytes());
-
-    payload
-}
-
-fn expiry_time(expire_secs: u32) -> u32 {
-    if expire_secs > 0 {
-        current_timestamp() - expire_secs
-    } else {
-        0
+        Ok(())
     }
+
 }
 
-#[inline]
-fn current_timestamp() -> u32 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32
-}
 
-impl Drop for FsStorage {
-    fn drop(&mut self) {
-        if let Err(e) = self.active_file.sync_all() {
-            write!(stderr(), "error while closing active file: {:?}", e).expect("error writing to stderr");
-        }
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -197,8 +74,9 @@ mod test {
 
     use tempdir::TempDir;
 
-    use crate::cask::{Config, Reader, Writer};
-    use crate::storage::{CRC_OFFSET, CRC_SIZE, fs_utils, FsBackend, KEY_OFFSET, KEY_SIZE_OFFSET, VAL_SIZE_OFFSET};
+    use super::{Config, Reader, Writer};
+    use crate::storage::{CRC_OFFSET, CRC_SIZE, utils, FsBackend, KEY_OFFSET, KEY_SIZE_OFFSET, VAL_SIZE_OFFSET, Writer};
+    use crate::storage::config::Config;
 
     use super::FsStorage;
 
@@ -232,7 +110,7 @@ mod test {
 
         // let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(write_cask.active_file_id))).unwrap();
         let filename = format!("{}.bitcask.data", write_cask.active_file_id);
-        let mut cask_file = fs_utils::open_file_for_read(&dir, &filename).unwrap();
+        let mut cask_file = utils::open_file_for_read(&dir, &filename).unwrap();
 
         cask_file.seek(SeekFrom::Start(0)).unwrap();
         cask_file.read_exact(&mut payload).unwrap();

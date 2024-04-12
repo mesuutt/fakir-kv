@@ -18,12 +18,3 @@ impl Default for Config {
         }
     }
 }
-
-pub trait Reader {
-    fn get(&mut self, key: &[u8]) -> anyhow::Result<Option<Vec<u8>>>;
-}
-
-pub trait Writer {
-    fn put(&mut self, key: &[u8], val: &[u8]) -> anyhow::Result<()>;
-    fn delete(&mut self, key: &[u8]) -> anyhow::Result<()>;
-}
