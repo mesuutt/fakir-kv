@@ -1,13 +1,14 @@
 use std::fs;
 use std::io::{stderr, Write};
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use bytes::BufMut;
 
-use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE_OFFSET, TOMBSTONE_MARKER_CHAR, utils, VAL_SIZE_OFFSET};
+use crate::storage::{Config, CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR, utils, VAL_SIZE_OFFSET};
 use crate::storage::context::{ReadContext, WriteContext};
 use crate::storage::utils::{build_data_file_name, open_file_for_write};
 
@@ -15,15 +16,17 @@ pub struct LogWriter<'a> {
     file_id: u64,
     file: fs::File,
     position: u32,
-    ctx: &'a WriteContext,
+    conf: &'a Config,
+    key_dir: Arc<RwLock<KeyDir>>,
+    // ctx: &'a WriteContext,
 }
 
 impl<'a> LogWriter<'a> {
-    pub fn new(ctx: &'a WriteContext) -> anyhow::Result<Self> {
+    pub fn new(conf: &'a Config, key_dir: Arc<RwLock<KeyDir>>) -> anyhow::Result<Self> {
         let file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let file = open_file_for_write(&ctx.conf.path, &build_data_file_name(file_id))?;
+        let file = open_file_for_write(&conf.path, &build_data_file_name(file_id))?;
 
-        Ok(LogWriter { file_id, file, ctx, position: 0 })
+        Ok(LogWriter { file_id, file, conf, key_dir, position: 0 })
     }
 
     pub fn file_id(&self) -> u64 {
@@ -62,9 +65,9 @@ impl<'a> LogWriter<'a> {
         println!("{:?}", header);
         // debug_entry(&entry_bytes);
 
-        self.ctx.key_dir.try_write().unwrap().insert(key.to_vec(), header);
+        self.key_dir.write().unwrap().insert(key.to_vec(), header);
 
-        if self.position > self.ctx.conf.max_file_size {
+        if self.position > self.conf.max_file_size {
             self.new_active_file()?;
         }
 
@@ -76,7 +79,7 @@ impl<'a> LogWriter<'a> {
         let new_filename = build_data_file_name(new_file_id);
 
         self.file.sync_all()?;
-        self.file = open_file_for_write(&self.ctx.conf.path, &new_filename)?;
+        self.file = open_file_for_write(&self.conf.path, &new_filename)?;
         ;
         self.file_id = new_file_id;
         self.position = 0;
@@ -94,7 +97,7 @@ impl<'a> LogWriter<'a> {
         // TODO: we can create flush_on_put config for flushing after puts.
         // flushing content can be not needed for some use cases?
         self.file.flush()?;
-        if self.ctx.conf.sync_on_put {
+        if self.conf.sync_on_put {
             self.file.sync_data()?;
         }
         Ok(())

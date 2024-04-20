@@ -35,6 +35,7 @@ const TOMBSTONE_MARKER_CHAR: u8 = 8;
 // TODO: We can benchmark BtreeMap: https://www.dotnetperls.com/btreemap-rust
 type KeyDir = HashMap<Vec<u8>, Header>;
 
+#[derive(Clone)]
 pub struct Header {
     file_id: u64,
     val_size: u32,

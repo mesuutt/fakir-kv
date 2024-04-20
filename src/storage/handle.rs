@@ -1,22 +1,21 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
-use crate::storage::{file_lock, Reader, utils};
+use crate::storage::{file_lock, Header, KeyDir, Reader, utils};
 use crate::storage::config::Config;
 use crate::storage::context::{ReadContext, WriteContext};
 use crate::storage::log_reader::LogReader;
 use crate::storage::log_writer::LogWriter;
 
 pub struct Handle<'a> {
-    read_ctx: ReadContext,
-    write_ctx: &'a WriteContext,
     conf: &'a Config,
     writer: LogWriter<'a>,
-
+    key_dir: Arc<RwLock<KeyDir>>,
     /**
     We use RefCell because we are update readers if read ops comes for new active_file after startup
      */
@@ -24,20 +23,19 @@ pub struct Handle<'a> {
 }
 
 impl<'a> Handle<'a> {
-    pub fn open(conf: &'a Config, write_ctx: &'a WriteContext) -> anyhow::Result<Handle<'a>> {
+    pub fn open(conf: &'a Config) -> anyhow::Result<Handle<'a>> {
         // TODO: rebuild storage
         fs::create_dir_all(&conf.path).context("data directory creation failed")?;
         file_lock::try_lock_db(&conf.path)?;
 
-        let read_ctx = ReadContext::new(conf.clone());
-        let writer = LogWriter::new(&write_ctx).unwrap();
+        let key_dir = Arc::new(RwLock::new(Default::default()));
+        let writer = LogWriter::new(&conf, key_dir.clone()).unwrap();
 
         let mut readers = HashMap::new();
-        readers.insert(writer.file_id(), LogReader::new(&read_ctx.conf.path, writer.file_id())?);
+        readers.insert(writer.file_id(), LogReader::new(&conf.path, writer.file_id())?);
 
         Ok(Handle {
-            read_ctx,
-            write_ctx,
+            key_dir,
             writer,
             conf,
             readers: RefCell::new(readers),
@@ -45,20 +43,17 @@ impl<'a> Handle<'a> {
     }
 
     pub fn get(&mut self, key: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
-        let bind = self.write_ctx.key_dir.read().unwrap();
-        let h = match bind.get(key) {
+        let header = { self.key_dir.read().unwrap().get(key).cloned() };
+        match header {
             None => { return Ok(None); }
-            Some(h) => {
-                if h.ts_tamp < utils::expiry_time(self.write_ctx.conf.expiry_secs) {
-                    // write causes to DEADLOCK
-                    // self.writer.delete(key)?;
+            Some(header) => {
+                if header.ts_tamp < utils::expiry_time(self.conf.expiry_secs) {
+                    self.writer.delete(key)?;
                     return Ok(None);
                 }
-                h
+                Ok(Some(self.read(header.file_id, header.val_offset, header.val_size)?))
             }
-        };
-
-        Ok(Some(self.read(h.file_id, h.val_offset, h.val_size)?))
+        }
     }
 
     fn read(&self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {
