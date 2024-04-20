@@ -43,17 +43,26 @@ impl<'a> Handle<'a> {
     }
 
     pub fn get(&mut self, key: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
-        let header = { self.key_dir.read().unwrap().get(key).cloned() };
-        match header {
-            None => { return Ok(None); }
-            Some(header) => {
-                if header.ts_tamp < utils::expiry_time(self.conf.expiry_secs) {
-                    self.writer.delete(key)?;
-                    return Ok(None);
+        let expired = {
+            let bind = self.key_dir.read().unwrap();
+            let header = bind.get(key);
+            match header {
+                None => { return Ok(None); }
+                Some(header) => {
+                    if header.ts_tamp > utils::expiry_time(self.conf.expiry_secs) {
+                        return Ok(Some(self.read(header.file_id, header.val_offset, header.val_size)?))
+                    }
+                    true
                 }
-                Ok(Some(self.read(header.file_id, header.val_offset, header.val_size)?))
             }
+        };
+
+        if expired {
+            self.writer.delete(key)?;
+            return Ok(None);
         }
+
+        unreachable!()
     }
 
     fn read(&self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {
