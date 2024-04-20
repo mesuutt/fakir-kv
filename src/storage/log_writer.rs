@@ -8,18 +8,18 @@ use anyhow::Context;
 use bytes::BufMut;
 
 use crate::storage::{CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE_OFFSET, TOMBSTONE_MARKER_CHAR, utils, VAL_SIZE_OFFSET};
-use crate::storage::context::AppContext;
+use crate::storage::context::{ReadContext, WriteContext};
 use crate::storage::utils::{build_data_file_name, open_file_for_write};
 
-pub struct LogWriter {
+pub struct LogWriter<'a> {
     file_id: u64,
     file: fs::File,
     position: u32,
-    ctx: Arc<AppContext>,
+    ctx: &'a WriteContext,
 }
 
-impl LogWriter {
-    pub fn new(ctx: Arc<AppContext>) -> anyhow::Result<Self> {
+impl<'a> LogWriter<'a> {
+    pub fn new(ctx: &'a WriteContext) -> anyhow::Result<Self> {
         let file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let file = open_file_for_write(&ctx.conf.path, &build_data_file_name(file_id))?;
 
@@ -109,7 +109,7 @@ impl LogWriter {
 }
 
 
-impl Drop for LogWriter {
+impl Drop for LogWriter<'_> {
     fn drop(&mut self) {
         if let Err(e) = self.file.sync_all() {
             write!(stderr(), "error while closing active file: {:?}", e).expect("error writing to stderr");

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub path: PathBuf,
     pub expiry_secs: u32,

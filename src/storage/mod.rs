@@ -5,6 +5,7 @@ use std::mem::size_of;
 pub use fs_store::FsStorage;
 pub use handle::Handle;
 pub use config::Config;
+pub use context::WriteContext;
 
 mod fs_store;
 mod file_lock;
@@ -34,7 +35,7 @@ const TOMBSTONE_MARKER_CHAR: u8 = 8;
 // TODO: We can benchmark BtreeMap: https://www.dotnetperls.com/btreemap-rust
 type KeyDir = HashMap<Vec<u8>, Header>;
 
-struct Header {
+pub struct Header {
     file_id: u64,
     val_size: u32,
     val_offset: u32,
