@@ -1,16 +1,31 @@
 use std::fs;
 use std::io::{stderr, Write};
-use std::path::Path;
-use std::rc::Rc;
+use std::mem::size_of;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use bytes::BufMut;
 
-use crate::storage::{Config, CRC_OFFSET, CRC_SIZE, Header, KEY_OFFSET, KEY_SIZE_OFFSET, KeyDir, TOMBSTONE_MARKER_CHAR, utils, VAL_SIZE_OFFSET};
-use crate::storage::context::{ReadContext, WriteContext};
+use crate::storage::{Config, Header, KeyDir, utils};
 use crate::storage::utils::{build_data_file_name, open_file_for_write};
+
+
+// [crc|ts_tamp|ksz|vsz|key|val]
+
+const CRC_SIZE: usize = size_of::<u32>();
+const TS_SIZE: usize = size_of::<u32>();
+const KEY_SIZE: usize = size_of::<u32>();
+const VAL_SIZE: usize = size_of::<u32>();
+
+const CRC_OFFSET: usize = 0;
+const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
+const VAL_SIZE_OFFSET: usize = KEY_SIZE_OFFSET + KEY_SIZE;
+const KEY_OFFSET: usize = VAL_SIZE_OFFSET + VAL_SIZE;
+
+// use backspace char as tombstone marker
+const TOMBSTONE_MARKER_CHAR: u8 = 8;
+
 
 pub struct LogWriter<'a> {
     file_id: u64,
@@ -33,7 +48,24 @@ impl<'a> LogWriter<'a> {
         self.file_id
     }
 
-    pub fn write(&mut self, key: &[u8], val: &[u8]) -> anyhow::Result<()> {
+    pub fn put(&mut self, key: &[u8], val: &[u8]) -> anyhow::Result<()> {
+        let header = self.write_content(key, val)?;
+        self.key_dir.write().unwrap().insert(key.to_vec(), header);
+
+        if self.position > self.conf.max_file_size {
+            self.new_active_file()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn delete(&mut self, key: &[u8]) -> anyhow::Result<()> {
+        self.write_content(key, &[TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
+        self.key_dir.write().unwrap().remove(key);
+        Ok(())
+    }
+
+    fn write_content(&mut self, key: &[u8], val: &[u8]) -> anyhow::Result<Header> {
         /*
         dbg!(CRC_SIZE);
         dbg!(TS_SIZE);
@@ -65,14 +97,9 @@ impl<'a> LogWriter<'a> {
         println!("{:?}", header);
         // debug_entry(&entry_bytes);
 
-        self.key_dir.write().unwrap().insert(key.to_vec(), header);
-
-        if self.position > self.conf.max_file_size {
-            self.new_active_file()?;
-        }
-
-        Ok(())
+        Ok(header)
     }
+
 
     fn new_active_file(&mut self) -> anyhow::Result<()> {
         let new_file_id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -80,17 +107,12 @@ impl<'a> LogWriter<'a> {
 
         self.file.sync_all()?;
         self.file = open_file_for_write(&self.conf.path, &new_filename)?;
-        ;
         self.file_id = new_file_id;
         self.position = 0;
 
         Ok(())
     }
 
-    pub fn delete(&mut self, key: &[u8]) -> anyhow::Result<()> {
-        self.write(key, &[TOMBSTONE_MARKER_CHAR; 1]).context("key deletion failed")?;
-        Ok(())
-    }
 
     #[inline]
     fn sync(&mut self) -> anyhow::Result<()> {
@@ -110,7 +132,6 @@ impl<'a> LogWriter<'a> {
         Ok(())
     }
 }
-
 
 impl Drop for LogWriter<'_> {
     fn drop(&mut self) {
@@ -150,4 +171,138 @@ fn debug_entry(payload: &[u8]) {
     } else {
         println!("PutEntry<key={}, val={}>", std::str::from_utf8(&key).unwrap(), std::str::from_utf8(&val).unwrap())
     }
+}
+
+
+
+#[cfg(test)]
+mod test {
+    use std::io::{Read, Seek, SeekFrom};
+    use std::sync::{Arc, RwLock};
+    use tempdir::TempDir;
+
+    use crate::storage::{Config, utils};
+    use crate::storage::log_reader::LogReader;
+    use super::{CRC_OFFSET, CRC_SIZE, KEY_OFFSET, KEY_SIZE_OFFSET, LogWriter, VAL_SIZE_OFFSET};
+
+    #[test]
+    fn it_should_create_new_log() {
+        let conf = Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        };
+
+        let writer = LogWriter::new(&conf, Default::default()).unwrap();
+
+        assert_eq!(0, writer.position);
+        assert_ne!(0, writer.file_id);
+    }
+
+
+    #[test]
+    fn it_should_write_to_file() {
+        // given
+        let dir = TempDir::new("bitcask-").unwrap().into_path();
+        let conf = Config {
+            path: dir.clone(),
+            ..Default::default()
+        };
+
+        let mut writer = LogWriter::new(&conf, Default::default()).unwrap();
+
+        let key = b"foo";
+        let val = b"bar";
+
+        // when
+        writer.put(key, val).unwrap();
+
+        // then
+        let mut payload = vec![0; KEY_OFFSET + key.len() + val.len()];
+
+        // let mut cask_file = File::open(Path::join(dir.path(), FsStorage::make_filename(writer.active_file_id))).unwrap();
+        let filename = format!("{}.bitcask.data", writer.file_id);
+        let mut cask_file = utils::open_file_for_read(&dir, &filename).unwrap();
+
+        cask_file.seek(SeekFrom::Start(0)).unwrap();
+        cask_file.read_exact(&mut payload).unwrap();
+
+        let payload_without_crc = payload[CRC_OFFSET + CRC_SIZE..].to_vec();
+        let checksum = crc32fast::hash(&payload_without_crc);
+        assert_eq!(u32::from_be_bytes(payload[CRC_OFFSET..CRC_OFFSET + CRC_SIZE].try_into().unwrap()), checksum);
+
+        assert_eq!(u32::from_be_bytes(payload[KEY_SIZE_OFFSET..VAL_SIZE_OFFSET].try_into().unwrap()), key.len() as u32);
+        assert_eq!(u32::from_be_bytes(payload[VAL_SIZE_OFFSET..KEY_OFFSET].try_into().unwrap()), val.len() as u32);
+
+        assert_eq!(payload[KEY_OFFSET..KEY_OFFSET + key.len()], *key.as_slice());
+
+        let val_offset = KEY_OFFSET + key.len();
+        assert_eq!(payload[val_offset..val_offset + val.len()], *val.as_slice());
+
+        let key_dir = writer.key_dir.read().unwrap();
+        let header = key_dir.get(key.as_slice()).unwrap();
+        assert_eq!(header.file_id, writer.file_id);
+        assert_eq!(header.val_size, val.len() as u32);
+        assert_eq!(header.val_offset, (KEY_OFFSET + key.len()).try_into().unwrap());
+        assert_eq!(writer.position, (KEY_OFFSET + key.len() + val.len()).try_into().unwrap());
+    }
+
+
+
+    #[test]
+    fn it_should_get() {
+        // TODO: move to integration test
+        // given
+        let conf = Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        };
+
+        let key_dir = Arc::new(RwLock::new(Default::default()));
+        let mut writer = LogWriter::new(&conf, key_dir.clone()).unwrap();
+        let reader = LogReader::new(&conf.path, writer.file_id).unwrap();
+
+        let pairs: Vec<(&[u8], &[u8])> = vec![
+            (b"key1", b"val1"),
+            (b"key2", b"val2"),
+            (b"key1", b"val3"),
+        ];
+
+        for (key, val) in pairs {
+            writer.put(key, val).unwrap();
+            let key_dir_guard = key_dir.read().unwrap();
+            let actual = reader.read(key_dir_guard.get(key).unwrap().val_offset, key_dir_guard.get(key).unwrap().val_size).unwrap();
+            assert_eq!(val, actual.as_slice());
+        }
+    }
+
+
+
+    #[test]
+    fn it_should_delete() {
+        // TODO: move to integration test
+        // write a unit test for here
+
+        // given
+        let conf = Config {
+            path: TempDir::new("bitcask-").unwrap().into_path(),
+            ..Default::default()
+        };
+
+        let key_dir = Arc::new(RwLock::new(Default::default()));
+        let mut writer = LogWriter::new(&conf, key_dir.clone()).unwrap();
+        let reader = LogReader::new(&conf.path, writer.file_id).unwrap();
+
+        let key = b"k1";
+
+        // when
+        writer.put(key, b"val1").unwrap();
+
+        // then
+        assert!(writer.delete(key).is_ok());
+
+        let key_dir_guard = key_dir.read().unwrap();
+        assert!(key_dir_guard.get(key.as_slice()).is_none());
+    }
+
+
 }

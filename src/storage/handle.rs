@@ -1,14 +1,12 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
-use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 
-use crate::storage::{file_lock, Header, KeyDir, Reader, utils};
+use crate::storage::{file_lock, KeyDir, utils};
 use crate::storage::config::Config;
-use crate::storage::context::{ReadContext, WriteContext};
 use crate::storage::log_reader::LogReader;
 use crate::storage::log_writer::LogWriter;
 
@@ -50,7 +48,7 @@ impl<'a> Handle<'a> {
                 None => { return Ok(None); }
                 Some(header) => {
                     if header.ts_tamp > utils::expiry_time(self.conf.expiry_secs) {
-                        return Ok(Some(self.read(header.file_id, header.val_offset, header.val_size)?))
+                        return Ok(Some(self.read(header.file_id, header.val_offset, header.val_size)?));
                     }
                     true
                 }
@@ -68,8 +66,7 @@ impl<'a> Handle<'a> {
     fn read(&self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {
         let mut readers = self.readers.borrow_mut();
         if let None = readers.get(&file_id) {
-            let r = LogReader::new(&self.conf.path, file_id)?;
-            readers.insert(file_id, r);
+            readers.insert(file_id, LogReader::new(&self.conf.path, file_id)?);
         };
 
         let reader = readers.get(&file_id).unwrap();
@@ -77,7 +74,7 @@ impl<'a> Handle<'a> {
     }
 
     pub fn put(&mut self, key: &[u8], val: &[u8]) -> anyhow::Result<()> {
-        self.writer.write(key, val)
+        self.writer.put(key, val)
     }
 
     pub fn delete(&mut self, key: &[u8]) -> anyhow::Result<()> {

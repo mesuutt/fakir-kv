@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use std::mem::size_of;
 
-pub use fs_store::FsStorage;
-pub use handle::Handle;
 pub use config::Config;
-pub use context::WriteContext;
+pub use handle::Handle;
 
-mod fs_store;
 mod file_lock;
 mod utils;
 mod log_reader;
@@ -15,22 +11,6 @@ mod handle;
 mod config;
 mod context;
 mod log_writer;
-
-// [crc|ts_tamp|ksz|vsz|key|val]
-
-const CRC_SIZE: usize = size_of::<u32>();
-const TS_SIZE: usize = size_of::<u32>();
-const KEY_SIZE: usize = size_of::<u32>();
-const VAL_SIZE: usize = size_of::<u32>();
-
-const CRC_OFFSET: usize = 0;
-const TS_OFFSET: usize = CRC_SIZE;
-const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
-const VAL_SIZE_OFFSET: usize = KEY_SIZE_OFFSET + KEY_SIZE;
-const KEY_OFFSET: usize = VAL_SIZE_OFFSET + VAL_SIZE;
-
-// use backspace char as tombstone marker
-const TOMBSTONE_MARKER_CHAR: u8 = 8;
 
 // TODO: We can benchmark BtreeMap: https://www.dotnetperls.com/btreemap-rust
 type KeyDir = HashMap<Vec<u8>, Header>;
