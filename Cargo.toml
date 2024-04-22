@@ -27,3 +27,7 @@ tempdir = "0.3.7"
 [[bench]]
 name = "bench_main"
 harness = false
+
+[profile.profiling]
+inherits = "release"
+debug = true
