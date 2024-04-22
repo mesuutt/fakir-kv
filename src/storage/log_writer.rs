@@ -89,12 +89,12 @@ impl<'a> LogWriter<'a> {
             ts_tamp,
         };
 
-        if key == &[107, 95, 50] {
+        /*if key == &[107, 95, 50] {
             println!("{:?}", header);
             debug_entry(&entry_bytes);
-        }
+        }*/
 
-        println!("{:?}", header);
+        // println!("{:?}", header);
         // debug_entry(&entry_bytes);
 
         Ok(header)
@@ -303,6 +303,4 @@ mod test {
         let key_dir_guard = key_dir.read().unwrap();
         assert!(key_dir_guard.get(key.as_slice()).is_none());
     }
-
-
 }

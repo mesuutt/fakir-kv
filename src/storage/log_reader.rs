@@ -6,14 +6,13 @@ use std::path::Path;
 use crate::storage::utils::{build_data_file_name, open_file_for_read};
 
 pub struct LogReader {
-    file_id: u64,
     file: RefCell<fs::File>,
 }
 
 impl LogReader {
     pub fn new<P>(dir: P, file_id: u64) -> anyhow::Result<Self> where P: AsRef<Path> {
         let file = open_file_for_read(dir, &build_data_file_name(file_id))?;
-        Ok(LogReader { file_id, file: RefCell::new(file) })
+        Ok(LogReader { file: RefCell::new(file) })
     }
 
     pub fn read(&self, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {

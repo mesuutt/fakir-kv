@@ -60,7 +60,7 @@ impl<'a> Handle<'a> {
             return Ok(None);
         }
 
-        unreachable!()
+        unreachable!("handle.get should always return")
     }
 
     fn read(&self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {
