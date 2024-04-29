@@ -9,10 +9,10 @@ use crate::storage::utils::{build_data_file_name, open_file_for_read};
 
 pub fn rebuild_storage<P>(path: P) -> anyhow::Result<KeyDir> where P: AsRef<Path> {
     let mut key_dir = KeyDir::new();
-    let file_ids = extract_data_file_ids(&path)?;
-    for file_id in file_ids {
-        load_from_data_file(&path, file_id, &mut key_dir)?;
-    }
+    extract_data_file_ids(&path)?
+        .try_for_each(|file_id| -> anyhow::Result<()> {
+            load_from_data_file(&path, file_id, &mut key_dir)
+        })?;
     Ok(key_dir)
 }
 
@@ -20,12 +20,12 @@ fn load_from_data_file<P>(path: P, file_id: u64, key_dir: &mut KeyDir) -> anyhow
     where P: AsRef<Path> {
     let file = open_file_for_read(path, &build_data_file_name(file_id))?;
     let mut it = LogIterator::new(file_id, file);
-    it.try_for_each(|result| {
+    it.try_for_each(|result| -> anyhow::Result<()> {
         let (key, header) = result?;
         // println!("{:?}, {:?}", header,  std::str::from_utf8(&key));
         key_dir.insert(key, header);
 
-        Ok::<(), anyhow::Error>(())
+        Ok(())
     })?;
 
     Ok(())
