@@ -18,8 +18,7 @@ pub fn bench(c: &mut Criterion) {
         }
     }));
 
-    let mut rng = rand::thread_rng();
-    pairs.shuffle(&mut rng);
+    pairs.shuffle(&mut rand::thread_rng());
 
     c.bench_function("cask.get", |b| b.iter(|| {
         for (k, _) in pairs.clone() {

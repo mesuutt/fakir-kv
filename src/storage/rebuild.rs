@@ -19,27 +19,14 @@ pub fn rebuild_storage<P>(path: P) -> anyhow::Result<KeyDir> where P: AsRef<Path
 fn load_from_data_file<P>(path: P, file_id: u64, key_dir: &mut KeyDir) -> anyhow::Result<()>
     where P: AsRef<Path> {
     let file = open_file_for_read(path, &build_data_file_name(file_id))?;
-    let mut it = LogIterator::new(file);
-    loop {
-        match it.next() {
-            None => { return Ok(()); }
-            Some(result) => {
-                let entry = result?;
-                // TODO: Iterator direk header donebilir, ekstra alloc yapmaya gerek kalmaz.
-                // Biz byte array'den header ve LogEntry olusturan iki fonksiyon olusturalim.
-                // byte array alip bunlardan donsunler. Her yerde read write yapiyoruz, logic daginik kalmasin.
-                let header = Header {
-                    file_id,
-                    val_size: entry.val_size,
-                    val_offset: entry.val_offset,
-                    ts_tamp: entry.ts_tamp,
-                };
+    let mut it = LogIterator::new(file_id, file);
+    it.try_for_each(|result| {
+        let (key, header) = result?;
+        // println!("{:?}, {:?}", header,  std::str::from_utf8(&key));
+        key_dir.insert(key, header);
 
-                // println!("{:?}, {:?}", header,  std::str::from_utf8(&entry.key));
-                key_dir.insert(entry.key, header);
-            }
-        }
-    }
+        Ok::<(), anyhow::Error>(())
+    })?;
 
     Ok(())
 }

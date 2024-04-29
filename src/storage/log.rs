@@ -39,15 +39,18 @@ impl Debug for LogEntry {
     }
 }
 
-pub struct LogIterator(fs::File);
+pub struct LogIterator {
+    file: fs::File,
+    file_id: u64,
+}
 
 impl LogIterator {
-    pub fn new(f: fs::File) -> Self {
-        Self { 0: f }
+    pub fn new(file_id: u64, file: fs::File) -> Self {
+        Self { file_id, file }
     }
 
     fn read_to(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        match self.0.read(buf) {
+        match self.file.read(buf) {
             Ok(size) => return Ok(size),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => Ok(0),
             Err(e) => Err(e),
@@ -56,7 +59,7 @@ impl LogIterator {
 }
 
 impl Iterator for LogIterator {
-    type Item = anyhow::Result<LogEntry>;
+    type Item = anyhow::Result<(Vec<u8>, Header)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: crc check?
@@ -100,7 +103,7 @@ impl Iterator for LogIterator {
             return Some(Err(Error::from(result.unwrap_err())));
         }
 
-        let stream_pos = match self.0.stream_position() {
+        let stream_pos = match self.file.stream_position() {
             Ok(pos) => { pos }
             Err(e) => return Some(Err(Error::from(result.unwrap_err()))),
         };
@@ -118,14 +121,12 @@ impl Iterator for LogIterator {
             return Some(Err(Error::from(result.unwrap_err())));
         }
 
-        Some(Ok(LogEntry {
-            crc: crc.to_vec(),
+        Some(Ok((key, Header {
+            file_id: self.file_id,
             ts_tamp: u32::from_be_bytes(timestamp),
             val_size,
             val_offset,
-            key,
-            val,
-        }))
+        })))
     }
 }
 
