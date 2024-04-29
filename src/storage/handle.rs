@@ -30,7 +30,7 @@ impl<'a> Handle<'a> {
         fs::create_dir_all(&conf.path).context("data directory creation failed")?;
         file_lock::try_lock_db(&conf.path)?;
 
-        let writer = LogWriter::new(&conf, key_dir.clone()).unwrap();
+        let writer = LogWriter::new(conf, key_dir.clone()).unwrap();
 
         let mut readers = HashMap::new();
         readers.insert(writer.file_id(), LogReader::new(&conf.path, writer.file_id())?);
@@ -68,7 +68,7 @@ impl<'a> Handle<'a> {
 
     fn read(&self, file_id: u64, offset: u32, size: u32) -> anyhow::Result<Vec<u8>> {
         let mut readers = self.readers.borrow_mut();
-        if let None = readers.get(&file_id) {
+        if readers.get(&file_id).is_none() {
             readers.insert(file_id, LogReader::new(&self.conf.path, file_id)?);
         };
 

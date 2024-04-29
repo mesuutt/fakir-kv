@@ -149,10 +149,10 @@ fn debug_entry(payload: &[u8]) {
 
     let val_offset = KEY_OFFSET + key_size;
     let val = &payload[val_offset..val_offset + val_size];
-    if val == &[8] {
-        println!("DeleteEntry<key={}>", std::str::from_utf8(&key).unwrap())
+    if val == [8] {
+        println!("DeleteEntry<key={}>", std::str::from_utf8(key).unwrap())
     } else {
-        println!("PutEntry<key={}, val={}>", std::str::from_utf8(&key).unwrap(), std::str::from_utf8(&val).unwrap())
+        println!("PutEntry<key={}, val={}>", std::str::from_utf8(key).unwrap(), std::str::from_utf8(val).unwrap())
     }
 }
 

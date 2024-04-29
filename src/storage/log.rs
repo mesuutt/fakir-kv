@@ -51,7 +51,7 @@ impl LogIterator {
 
     fn read_to(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         match self.file.read(buf) {
-            Ok(size) => return Ok(size),
+            Ok(size) => Ok(size),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => Ok(0),
             Err(e) => Err(e),
         }
@@ -65,8 +65,8 @@ impl Iterator for LogIterator {
         // TODO: crc check?
         let mut crc = [0u8; CRC_SIZE];
         let result = self.read_to(&mut crc);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         // CRC is first byte of the entry, so If 0 byte consumed, it means EOF
@@ -76,22 +76,22 @@ impl Iterator for LogIterator {
 
         let mut timestamp = [0u8; TS_SIZE];
         let result = self.read_to(&mut timestamp);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         let mut key_size_bytes = [0u8; KEY_SIZE];
         let result = self.read_to(&mut key_size_bytes);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         let key_size = u32::from_be_bytes(key_size_bytes);
 
         let mut val_size_bytes = [0u8; VAL_SIZE];
         let result = self.read_to(&mut val_size_bytes);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         let val_size = u32::from_be_bytes(val_size_bytes);
@@ -99,13 +99,13 @@ impl Iterator for LogIterator {
         let mut key = vec![0u8; key_size as usize];
 
         let result = self.read_to(&mut key);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         let stream_pos = match self.file.stream_position() {
             Ok(pos) => { pos }
-            Err(e) => return Some(Err(Error::from(result.unwrap_err()))),
+            Err(e) => return Some(Err(Error::from(e))),
         };
 
         let val_offset = match u32::try_from(stream_pos) {
@@ -117,8 +117,8 @@ impl Iterator for LogIterator {
 
         let mut val = vec![0u8; val_size as usize];
         let result = self.read_to(&mut val);
-        if result.is_err() {
-            return Some(Err(Error::from(result.unwrap_err())));
+        if let Err(e) = result {
+            return Some(Err(Error::from(e)));
         }
 
         Some(Ok((key, Header {
