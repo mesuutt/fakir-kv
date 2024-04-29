@@ -1,6 +1,5 @@
 use std::fs;
 use std::io::{stderr, Write};
-use std::mem::size_of;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,24 +7,8 @@ use anyhow::Context;
 use bytes::BufMut;
 
 use crate::storage::{Config, Header, KeyDir, utils};
+use crate::storage::log::{CRC_OFFSET, CRC_SIZE, KEY_OFFSET, KEY_SIZE_OFFSET, TOMBSTONE_MARKER_CHAR, VAL_SIZE_OFFSET};
 use crate::storage::utils::{build_data_file_name, open_file_for_write};
-
-
-// [crc|ts_tamp|ksz|vsz|key|val]
-
-const CRC_SIZE: usize = size_of::<u32>();
-const TS_SIZE: usize = size_of::<u32>();
-const KEY_SIZE: usize = size_of::<u32>();
-const VAL_SIZE: usize = size_of::<u32>();
-
-const CRC_OFFSET: usize = 0;
-const KEY_SIZE_OFFSET: usize = CRC_SIZE + TS_SIZE;
-const VAL_SIZE_OFFSET: usize = KEY_SIZE_OFFSET + KEY_SIZE;
-const KEY_OFFSET: usize = VAL_SIZE_OFFSET + VAL_SIZE;
-
-// use backspace char as tombstone marker
-const TOMBSTONE_MARKER_CHAR: u8 = 8;
-
 
 pub struct LogWriter<'a> {
     file_id: u64,
@@ -174,15 +157,16 @@ fn debug_entry(payload: &[u8]) {
 }
 
 
-
 #[cfg(test)]
 mod test {
     use std::io::{Read, Seek, SeekFrom};
     use std::sync::{Arc, RwLock};
+
     use tempdir::TempDir;
 
     use crate::storage::{Config, utils};
     use crate::storage::log_reader::LogReader;
+
     use super::{CRC_OFFSET, CRC_SIZE, KEY_OFFSET, KEY_SIZE_OFFSET, LogWriter, VAL_SIZE_OFFSET};
 
     #[test]
@@ -247,7 +231,6 @@ mod test {
     }
 
 
-
     #[test]
     fn it_should_get() {
         // TODO: move to integration test
@@ -274,7 +257,6 @@ mod test {
             assert_eq!(val, actual.as_slice());
         }
     }
-
 
 
     #[test]

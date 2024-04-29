@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use log::Log;
 
 use crate::storage::utils::{build_data_file_name, open_file_for_read};
 
@@ -25,5 +26,6 @@ impl LogReader {
         Ok(buf)
     }
 }
+
 
 

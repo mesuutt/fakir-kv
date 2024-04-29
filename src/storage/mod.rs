@@ -11,6 +11,8 @@ mod handle;
 mod config;
 mod context;
 mod log_writer;
+mod rebuild;
+mod log;
 
 // TODO: We can benchmark BtreeMap: https://www.dotnetperls.com/btreemap-rust
 type KeyDir = HashMap<Vec<u8>, Header>;
@@ -29,20 +31,6 @@ impl Debug for Header {
     }
 }
 
-/*
-struct Entry {
-    pub crc: Vec<u8>,
-    pub ts_tamp: u32,
-    pub key: Vec<u8>,
-    pub val: Vec<u8>,
-}
-
-impl Debug for Entry {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Entry<key={}, val={}>", str::from_utf8(&self.key).unwrap(), str::from_utf8(&self.val).unwrap())
-    }
-}
-*/
 
 
 pub trait Reader {

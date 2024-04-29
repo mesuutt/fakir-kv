@@ -9,6 +9,7 @@ use crate::storage::{file_lock, KeyDir, utils};
 use crate::storage::config::Config;
 use crate::storage::log_reader::LogReader;
 use crate::storage::log_writer::LogWriter;
+use crate::storage::rebuild::rebuild_storage;
 
 pub struct Handle<'a> {
     conf: &'a Config,
@@ -23,10 +24,12 @@ pub struct Handle<'a> {
 impl<'a> Handle<'a> {
     pub fn open(conf: &'a Config) -> anyhow::Result<Handle<'a>> {
         // TODO: rebuild storage
+        let key_dir = Arc::new(RwLock::new(rebuild_storage(&conf.path)?));
+        // let key_dir = Arc::new(RwLock::new(Default::default()));
+
         fs::create_dir_all(&conf.path).context("data directory creation failed")?;
         file_lock::try_lock_db(&conf.path)?;
 
-        let key_dir = Arc::new(RwLock::new(Default::default()));
         let writer = LogWriter::new(&conf, key_dir.clone()).unwrap();
 
         let mut readers = HashMap::new();
