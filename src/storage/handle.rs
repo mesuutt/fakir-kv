@@ -16,7 +16,7 @@ pub struct Handle<'a> {
     writer: LogWriter<'a>,
     key_dir: Arc<RwLock<KeyDir>>,
     /**
-    We use RefCell because we are update readers if read ops comes for new active_file after startup
+    We use RefCell because we update readers if read ops come for a key that stay in a different file after startup
      */
     readers: RefCell<HashMap<u64, LogReader>>,
 }
